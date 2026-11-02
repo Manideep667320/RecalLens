@@ -1,5 +1,5 @@
 """
-Document indexer for Paperless-ngx to Qdrant
+Document indexer for RecalLens (with Paperless-ngx support) to Qdrant
 """
 
 import logging
@@ -17,7 +17,9 @@ from qdrant_client.models import (
     VectorParams,
     OptimizersConfigDiff,
 )
-from models import DocumentChunk, PaperlessDocument, IndexingStats
+from models import DocumentChunk, RecalLensDocument, PaperlessDocument, IndexingStats, ExtractedContext, DatasetDocumentRecord
+from context import ContextExtractor
+from storage import get_postgres_client
 from providers import BaseProvider, EmbeddingTaskType
 
 logger = logging.getLogger(__name__)
@@ -46,7 +48,7 @@ def iso_to_timestamp(iso_date: Optional[str]) -> Optional[int]:
 
 
 class DocumentIndexer:
-    """Indexes Paperless documents into Qdrant"""
+    """Indexes RecalLens / Paperless documents into Qdrant"""
 
     def __init__(
         self,
@@ -85,6 +87,10 @@ class DocumentIndexer:
         self.max_retries = 10
         self.retry_backoff_minutes = [0, 5, 15, 60, 240, 720]  # 0min, 5min, 15min, 1hr, 4hr, 12hr
 
+        # RecalLens Context Extractor and Storage
+        self.context_extractor = ContextExtractor(provider=self.provider)
+        self.postgres_client = get_postgres_client()
+
     def _ensure_collection_exists(self, vector_size: int):
         """Lazily initialize Qdrant collection on first use"""
         try:
@@ -111,6 +117,11 @@ class DocumentIndexer:
             )
 
             # Create payload indexes for filtering
+            self.qdrant_client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="recallens_id",
+                field_schema="integer"
+            )
             self.qdrant_client.create_payload_index(
                 collection_name=self.collection_name,
                 field_name="paperless_id",
@@ -271,7 +282,7 @@ class DocumentIndexer:
             stats.time_taken_seconds = time.time() - start_time
             return stats
 
-    def _process_document(self, doc: PaperlessDocument) -> List[DocumentChunk]:
+    def _process_document(self, doc: RecalLensDocument) -> List[DocumentChunk]:
         """Process a document into chunks"""
         try:
             # Extract metadata
@@ -280,12 +291,18 @@ class DocumentIndexer:
 
             # Chunk the content
             content = doc.content or ""
+            doc_context = self.context_extractor.extract_document_context(
+                text=content or doc.title,
+                title=doc.title,
+                raw_date=doc.created
+            )
             chunks = []
 
             if not content:
                 # Create single metadata chunk
                 chunks.append(DocumentChunk(
-                    id=f"paperless_{doc.id}_chunk_0",
+                    id=f"recallens_{doc.id}_chunk_0",
+                    recallens_id=doc.id,
                     paperless_id=doc.id,
                     chunk_index=0,
                     chunk_type='metadata',
@@ -314,7 +331,8 @@ class DocumentIndexer:
                     metadata_text += f" | Summary: {summary}"
 
                 chunks.append(DocumentChunk(
-                    id=f"paperless_{doc.id}_chunk_0",
+                    id=f"recallens_{doc.id}_chunk_0",
+                    recallens_id=doc.id,
                     paperless_id=doc.id,
                     chunk_index=0,
                     chunk_type='metadata',
@@ -334,7 +352,8 @@ class DocumentIndexer:
                 content_chunks = self._chunk_text(content)
                 for i, chunk_text in enumerate(content_chunks, start=1):
                     chunks.append(DocumentChunk(
-                        id=f"paperless_{doc.id}_chunk_{i}",
+                        id=f"recallens_{doc.id}_chunk_{i}",
+                        recallens_id=doc.id,
                         paperless_id=doc.id,
                         chunk_index=i,
                         chunk_type='content',
@@ -354,6 +373,7 @@ class DocumentIndexer:
             total = len(chunks)
             for chunk in chunks:
                 chunk.total_chunks = total
+                chunk.context = doc_context
 
             return chunks
 
@@ -485,7 +505,7 @@ class DocumentIndexer:
     def _index_chunks(self, chunks: List[DocumentChunk]):
         """Generate embeddings and index chunks in Qdrant"""
         try:
-            paperless_id = chunks[0].paperless_id
+            doc_id = chunks[0].recallens_id or chunks[0].paperless_id
 
             # Generate embeddings for all chunks
             texts = [chunk.content for chunk in chunks]
@@ -506,8 +526,8 @@ class DocumentIndexer:
                 points_selector=Filter(
                     must=[
                         FieldCondition(
-                            key="paperless_id",
-                            match=MatchValue(value=paperless_id)
+                            key="recallens_id",
+                            match=MatchValue(value=doc_id)
                         )
                     ]
                 )
@@ -528,7 +548,7 @@ class DocumentIndexer:
             if points:
                 total_batches = (len(points) + UPSERT_BATCH_SIZE - 1) // UPSERT_BATCH_SIZE
 
-                logger.info(f"Upserting {len(points)} points for document {paperless_id} in {total_batches} batch(es)")
+                logger.info(f"Upserting {len(points)} points for document {doc_id} in {total_batches} batch(es)")
 
                 for i in range(0, len(points), UPSERT_BATCH_SIZE):
                     batch = points[i:i + UPSERT_BATCH_SIZE]
@@ -541,9 +561,32 @@ class DocumentIndexer:
                         points=batch
                     )
 
-                logger.info(f"Successfully indexed {len(points)} chunks for document {paperless_id}")
+                logger.info(f"Successfully indexed {len(points)} chunks for document {doc_id}")
+
+                # Persist structured context in PostgreSQL
+                try:
+                    first_chunk = chunks[0]
+                    ctx = getattr(first_chunk, 'context', None)
+                    if self.postgres_client and self.postgres_client.is_connected:
+                        self.postgres_client.save_document_context(
+                            document_id=str(doc_id),
+                            user_id="USER_001",
+                            title=first_chunk.title,
+                            document_type=ctx.document_type if ctx else None,
+                            source_id=str(doc_id),
+                            document_date=str(first_chunk.created_date) if first_chunk.created_date else None,
+                            event_date=ctx.event_date if ctx else None,
+                            location=ctx.location if ctx else None,
+                            amount=ctx.amount if ctx else None,
+                            entities=ctx.entities if ctx else None,
+                            event=ctx.event if ctx else None,
+                            relationships=ctx.relationships if ctx else None,
+                            chunks=[c.dict() for c in chunks]
+                        )
+                except Exception as e:
+                    logger.warning(f"PostgreSQL context save deferred: {e}")
             else:
-                raise Exception(f"No valid embeddings generated for document {paperless_id}")
+                raise Exception(f"No valid embeddings generated for document {doc_id}")
 
         except Exception as e:
             logger.error(f"Failed to index chunks: {e}")
@@ -684,6 +727,7 @@ class DocumentIndexer:
                 json.dump(state, f, indent=2)
             logger.debug(f"Saved state: last_poll={last_poll}, {len(failed_docs)} failed docs")
         except Exception as e:
+
             logger.error(f"Failed to save state file: {e}")
 
     def _load_last_poll_time(self) -> Optional[str]:
@@ -705,4 +749,62 @@ class DocumentIndexer:
                 json.dump({'last_poll': timestamp}, f)
             logger.info(f"Saved last poll time: {timestamp}")
         except Exception as e:
+
             logger.error(f"Failed to save state file: {e}")
+
+    def index_dataset_record(self, record: DatasetDocumentRecord) -> int:
+        """Index a benchmark dataset document record into Qdrant & PostgreSQL"""
+        ctx = self.context_extractor.extract_document_context(
+            text=record.text,
+            title=record.title,
+            raw_entities=record.entities,
+            raw_event=record.event,
+            raw_relationships=record.relationships,
+            raw_date=record.date,
+            document_type=record.document_type,
+            location=record.location,
+            amount=record.amount
+        )
+
+        chunks = []
+        content_chunks = self._chunk_text(record.text)
+        numeric_id = stable_hash(record.document_id)
+
+        for i, c_text in enumerate(content_chunks):
+            chunk = DocumentChunk(
+                id=f"{record.document_id}_chunk_{i}",
+                recallens_id=numeric_id,
+                paperless_id=numeric_id,
+                chunk_index=i,
+                chunk_type='content',
+                title=record.title,
+                content=c_text,
+                summary=self._create_summary(c_text, record.title, [record.document_type]),
+                tags=[record.document_type],
+                created_date=iso_to_timestamp(record.date),
+                total_chunks=len(content_chunks),
+                context=ctx
+            )
+            chunks.append(chunk)
+
+        if chunks:
+            self._index_chunks(chunks)
+            if self.postgres_client and self.postgres_client.is_connected:
+                self.postgres_client.save_document_context(
+                    document_id=record.document_id,
+                    user_id=record.user_id,
+                    title=record.title,
+                    document_type=record.document_type,
+                    source_type=record.source_type,
+                    source_id=record.document_id,
+                    document_date=record.date,
+                    event_date=ctx.event_date,
+                    location=record.location,
+                    amount=str(record.amount) if record.amount is not None else None,
+                    page_count=record.page_count or 1,
+                    entities=ctx.entities,
+                    event=ctx.event,
+                    relationships=ctx.relationships,
+                    chunks=[c.dict() for c in chunks]
+                )
+        return len(chunks)

@@ -6,7 +6,11 @@ jinja2==3.1.6
 # Qdrant client
 qdrant-client==1.16.2
 
-# HTTP client for Paperless and providers
+# PostgreSQL & ORM
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.25
+
+# HTTP client for RecalLens and providers
 requests==2.32.5
 
 # Scheduling for polling

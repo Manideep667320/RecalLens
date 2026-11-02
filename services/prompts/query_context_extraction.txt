@@ -1,0 +1,20 @@
+Analyze this personal search query and extract structured context elements.
+
+User Query: "{query}"
+Language: {language}
+
+Extract the following five components:
+1. "entity": the primary subject, device, person, or organization being queried (e.g. "laptop", "Dr. Smith", "car", "smartphone").
+2. "event": the action or event associated with the query (e.g. "purchase", "repair", "submission", "billing", "travel", "appointment").
+3. "time_reference": any temporal constraint mentioned (e.g. "last year", "January 2024", "last March", "around January", "between Jan and March"). If no date mentioned, use null.
+4. "relationship": any relationship between entities or events in format "Subject -> predicate -> Object" (e.g. "laptop -> repair -> Metro Electronics", "user -> purchased -> laptop"). If none, use null.
+5. "target_information": the specific document or information sought (e.g. "warranty", "receipt", "invoice", "report", "bill").
+
+Respond with JSON only:
+{{
+  "entity": "extracted entity or null",
+  "event": "extracted event or null",
+  "time_reference": "extracted time expression or null",
+  "relationship": "Subject -> predicate -> Object or null",
+  "target_information": "warranty/receipt/invoice/etc or null"
+}}

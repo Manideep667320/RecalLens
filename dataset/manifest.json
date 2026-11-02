@@ -1,0 +1,52 @@
+{
+  "dataset_name": "MemoraX Final Dataset v1",
+  "documents": 1500,
+  "queries": 3750,
+  "relevance_records": 3750,
+  "synthetic_users": 100,
+  "sources": [
+    "FUNSD",
+    "SROIE",
+    "CORD-v2 train_00",
+    "CORD-v2 train_01"
+  ],
+  "document_features": [
+    "document_id",
+    "user_id",
+    "document_type",
+    "title",
+    "source_type",
+    "date",
+    "text",
+    "entities",
+    "event",
+    "relationships",
+    "location",
+    "amount",
+    "page_count",
+    "source_dataset",
+    "source_document_id"
+  ],
+  "query_features": [
+    "query_id",
+    "user_id",
+    "query_text",
+    "query_type",
+    "entity",
+    "event",
+    "time_reference",
+    "relationship",
+    "difficulty",
+    "split"
+  ],
+  "relevance_features": [
+    "query_id",
+    "document_id",
+    "relevance",
+    "relevance_type",
+    "evidence",
+    "split"
+  ],
+  "purpose": "Evaluation of context-aware personal information retrieval",
+  "privacy": "Synthetic personal identities and relationships; no real user identities"
+}

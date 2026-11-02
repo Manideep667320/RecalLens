@@ -1,9 +1,15 @@
 """
-Main FastAPI application for Paperless Qdrant Search
+Main FastAPI application for RecalLens Search
 Serves search API and web UI (indexing runs in separate service)
 """
 
 import os
+import sys
+
+# Ensure services directory is in sys.path
+services_dir = os.path.dirname(os.path.abspath(__file__))
+if services_dir not in sys.path:
+    sys.path.insert(0, services_dir)
 import logging
 import time
 import json
@@ -30,13 +36,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-PAPERLESS_URL = os.getenv('PAPERLESS_URL', 'http://localhost:8000')
-PAPERLESS_PUBLIC_URL = os.getenv('PAPERLESS_PUBLIC_URL', '').strip() or PAPERLESS_URL
-PAPERLESS_API_KEY = os.getenv('PAPERLESS_API_KEY')
+RECALLENS_URL = os.getenv('RECALLENS_URL', os.getenv('PAPERLESS_URL', 'http://localhost:8000'))
+PAPERLESS_URL = RECALLENS_URL
+RECALLENS_PUBLIC_URL = os.getenv('RECALLENS_PUBLIC_URL', os.getenv('PAPERLESS_PUBLIC_URL', '')).strip() or RECALLENS_URL
+PAPERLESS_PUBLIC_URL = RECALLENS_PUBLIC_URL
+RECALLENS_API_KEY = os.getenv('RECALLENS_API_KEY', os.getenv('PAPERLESS_API_KEY'))
+PAPERLESS_API_KEY = RECALLENS_API_KEY
 
 # Validate required configuration
-if not PAPERLESS_API_KEY:
-    logger.error("PAPERLESS_API_KEY environment variable is required")
+if not RECALLENS_API_KEY:
+    logger.error("RECALLENS_API_KEY (or PAPERLESS_API_KEY) environment variable is required")
     import sys
     sys.exit(1)
 
@@ -66,6 +75,13 @@ def initialize_components():
 
     logger.info("Initializing search components...")
 
+    # Initialize PostgreSQL storage
+    try:
+        from storage import init_db
+        init_db()
+    except Exception as e:
+        logger.warning(f"PostgreSQL initialization deferred or offline: {e}")
+
     # Create provider
     from providers import create_provider
     provider = create_provider()
@@ -94,7 +110,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown logic"""
     # Startup
     logger.info("=" * 60)
-    logger.info("Paperless Qdrant Search Web UI starting...")
+    logger.info("RecalLens Search Web UI starting...")
     logger.info(f"Qdrant URL: {QDRANT_URL}")
     logger.info(f"Ollama URL: {OLLAMA_URL}")
     logger.info(f"Embedding model: {EMBEDDING_MODEL}")
@@ -115,17 +131,20 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Paperless Qdrant Search",
-    description="Google-like search for Paperless documents with RAG",
+    title="RecalLens Search",
+    description="Context-Driven Personal Information Retrieval with Event, Entity and Temporal Reasoning",
     version="1.0.0",
     lifespan=lifespan
 )
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="web-ui/static"), name="static")
+WEB_UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web-ui")
+if not os.path.exists(WEB_UI_DIR):
+    WEB_UI_DIR = "web-ui"
+app.mount("/static", StaticFiles(directory=os.path.join(WEB_UI_DIR, "static")), name="static")
 
 # Setup templates
-templates = Jinja2Templates(directory="web-ui")
+templates = Jinja2Templates(directory=WEB_UI_DIR)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -173,7 +192,8 @@ async def search(query: SearchQuery):
         results = retriever.retrieve(
             expanded_query=expanded_query,
             top_k=retrieval_limit,
-            hybrid_alpha=hybrid_alpha
+            hybrid_alpha=hybrid_alpha,
+            user_id=query.user_id
         )
         retrieval_time = (time.time() - retrieval_start) * 1000
         logger.info(f"Retrieved {len(results)} unique documents (Qdrant-level deduplication)")
@@ -195,7 +215,8 @@ async def search(query: SearchQuery):
                 results,
                 len(results),  # Rerank all deduplicated results
                 recency_weight=recency_weight,
-                recency_decay_days=recency_decay_days
+                recency_decay_days=recency_decay_days,
+                query_context=expanded_query.context
             )
             rerank_time = (time.time() - rerank_start) * 1000
         elif recency_weight > 0:
@@ -214,11 +235,11 @@ async def search(query: SearchQuery):
                 adjustment = normalized_rerank * rerank_influence
                 # Apply to initial score
                 result.final_score = max(0.0, min(1.0, result.score + adjustment))
-                logger.debug(f"Doc {result.paperless_id}: initial={result.score:.4f}, rerank={result.rerank_score:.2f}/10, adjustment={adjustment:+.4f}, final={result.final_score:.4f}")
+                logger.debug(f"Doc {result.recallens_id or result.paperless_id}: initial={result.score:.4f}, rerank={result.rerank_score:.2f}/10, adjustment={adjustment:+.4f}, final={result.final_score:.4f}")
             else:
                 # No reranking, use initial score
                 result.final_score = result.score
-                logger.debug(f"Doc {result.paperless_id}: initial={result.score:.4f}, no rerank, final={result.final_score:.4f}")
+                logger.debug(f"Doc {result.recallens_id or result.paperless_id}: initial={result.score:.4f}, no rerank, final={result.final_score:.4f}")
 
         # Sort by final score and take top_k
         results.sort(key=lambda x: x.final_score, reverse=True)
@@ -227,7 +248,7 @@ async def search(query: SearchQuery):
         logger.info(f"Top {min(top_k, len(results))} results after sorting:")
         for i, result in enumerate(results[:top_k]):
             rerank_str = f"{result.rerank_score:.2f}/10" if result.rerank_score is not None else "N/A"
-            logger.info(f"  #{i+1}: Doc {result.paperless_id} - final={result.final_score:.4f}, initial={result.score:.4f}, rerank={rerank_str}")
+            logger.info(f"  #{i+1}: Doc {result.recallens_id or result.paperless_id} - final={result.final_score:.4f}, initial={result.score:.4f}, rerank={rerank_str}")
 
         results = results[:top_k]
 
@@ -244,6 +265,7 @@ async def search(query: SearchQuery):
         return SearchResponse(
             query=query.query,
             expanded_query=expanded_query.expanded_query if expansion_enabled else None,
+                query_context=expanded_query.context,
             results=results[:top_k],
             total_results=len(results),
             retrieval_time_ms=retrieval_time,
@@ -301,7 +323,8 @@ async def search_stream(query: SearchQuery, request: Request):
             results = retriever.retrieve(
                 expanded_query=expanded_query,
                 top_k=retrieval_limit,
-                hybrid_alpha=hybrid_alpha
+                hybrid_alpha=hybrid_alpha,
+                user_id=query.user_id
             )
             retrieval_time = (time.time() - retrieval_start) * 1000
             logger.info(f"Retrieval completed in {retrieval_time:.0f}ms")
@@ -332,6 +355,7 @@ async def search_stream(query: SearchQuery, request: Request):
             initial_response = SearchResponse(
                 query=query.query,
                 expanded_query=expanded_query.expanded_query if expansion_enabled else None,
+                query_context=expanded_query.context,
                 results=results,  # Send all results without highlights
                 total_results=len(results),
                 retrieval_time_ms=retrieval_time,
@@ -366,7 +390,8 @@ async def search_stream(query: SearchQuery, request: Request):
                     results,
                     len(results),
                     recency_weight=recency_weight,
-                    recency_decay_days=recency_decay_days
+                    recency_decay_days=recency_decay_days,
+                    query_context=expanded_query.context
                 ):
                     completed_count += 1
 
@@ -384,7 +409,7 @@ async def search_stream(query: SearchQuery, request: Request):
                         reranked_result.final_score = reranked_result.score
 
                     # Send individual result update
-                    yield f"data: {json.dumps({'type': 'result_update', 'paperless_id': reranked_result.paperless_id, 'rerank_score': reranked_result.rerank_score, 'final_score': reranked_result.final_score, 'recency_boost': reranked_result.recency_boost})}\n\n"
+                    yield f"data: {json.dumps({'type': 'result_update', 'recallens_id': reranked_result.recallens_id or reranked_result.paperless_id, 'paperless_id': reranked_result.paperless_id, 'rerank_score': reranked_result.rerank_score, 'final_score': reranked_result.final_score, 'recency_boost': reranked_result.recency_boost, 'context_score': reranked_result.context_score, 'matched_entities': reranked_result.matched_entities, 'matched_event': reranked_result.matched_event, 'matched_relationship': reranked_result.matched_relationship, 'evidence': reranked_result.evidence})}\n\n"
 
                     # Update progress
                     yield f"data: {json.dumps({'type': 'progress', 'stage': 'reranking', 'message': f'Reranking {completed_count}/{total_docs}', 'current': completed_count, 'total': total_docs})}\n\n"
@@ -408,7 +433,8 @@ async def search_stream(query: SearchQuery, request: Request):
                     query.query,
                     max_highlights=2
                 )
-                highlights_map[result.paperless_id] = result.highlights
+                doc_id_val = result.recallens_id or result.paperless_id
+                highlights_map[doc_id_val] = result.highlights
 
             # Send highlights
             yield f"data: {json.dumps({'type': 'highlights', 'highlights': highlights_map})}\n\n"
@@ -442,6 +468,7 @@ async def health():
     }
 
 
+@app.get("/api/recallens/tags")
 @app.get("/api/paperless/tags")
 async def get_paperless_tags():
     """Fetch all tags from Paperless (with pagination)"""
@@ -481,6 +508,7 @@ async def get_paperless_tags():
         raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}")
 
 
+@app.get("/api/recallens/correspondents")
 @app.get("/api/paperless/correspondents")
 async def get_paperless_correspondents():
     """Fetch all correspondents from Paperless (with pagination)"""
@@ -526,7 +554,8 @@ async def get_config():
     llm_m = getattr(reranker.provider, 'llm_model', LLM_MODEL) if reranker and hasattr(reranker, 'provider') else LLM_MODEL
     rerank_m = getattr(reranker.provider, 'rerank_model', llm_m) if reranker and hasattr(reranker, 'provider') else RERANK_MODEL
     return {
-        "paperless_url": PAPERLESS_PUBLIC_URL,  # Use public URL for UI links
+        "recallens_url": RECALLENS_PUBLIC_URL,
+        "paperless_url": RECALLENS_PUBLIC_URL,  # Backward compatibility alias
         "embedding_model": emb_model,
         "rerank_model": rerank_m,
         "llm_model": llm_m,
@@ -565,7 +594,13 @@ async def explain(request: ExplainRequest):
         context = " | ".join(parts)
 
         # Get explanation from reranker
-        explanation = reranker.explain_score(request.query, context)
+        explanation = reranker.explain_score(
+            query=request.query,
+            result_context=context,
+            matched_entities=request.matched_entities,
+            matched_event=request.matched_event,
+            matched_relationship=request.matched_relationship
+        )
 
         return ExplainResponse(explanation=explanation)
 

@@ -1,0 +1,39 @@
+Extract structured personal context from this document.
+
+Document Title: "{title}"
+Document Text:
+"""
+{text}
+"""
+
+Instructions:
+1. Identify key entities:
+   - "person": name of the individual (user, doctor, technician, etc.)
+   - "item": product, device, service, or asset (e.g. laptop, car, insurance policy)
+   - "organization": merchant, company, hospital, or provider (e.g. Metro Electronics, Apple)
+   - "location": city, clinic, store branch, or address
+2. Identify the primary event (e.g. purchase, repair, billing, submission, travel, medical, warranty).
+3. Identify the event date in YYYY-MM-DD format if mentioned.
+4. Extract relationships formatted strictly as "Subject -> predicate -> Object" (e.g. "Aryan Maharaj -> repair -> laptop", "laptop -> associated_with -> Metro Electronics").
+5. Identify document type (receipt, invoice, service_record, warranty, bill, form, contract, medical_record).
+6. Extract amount and location if present.
+7. Quote a brief 1-sentence evidence excerpt.
+
+Respond with JSON only:
+{{
+  "entities": {{
+    "person": "name or null",
+    "item": "item or null",
+    "organization": "merchant/company or null",
+    "location": "city/place or null"
+  }},
+  "event": "event type or null",
+  "event_date": "YYYY-MM-DD or null",
+  "relationships": [
+    "Subject -> predicate -> Object"
+  ],
+  "document_type": "document type",
+  "amount": "amount or null",
+  "location": "city/place or null",
+  "evidence": "exact quote from text"
+}}

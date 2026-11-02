@@ -1,12 +1,22 @@
+/**
+ * RecalLens — Context-Driven Personal Document Intelligence
+ * Client-Side Application Engine (Double-Bezel UI, Real-Time SSE, Grounded Proof)
+ */
+
+// DOM Elements
+const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
 const contentDiv = document.getElementById('content');
 const queryExpansionCheckbox = document.getElementById('queryExpansion');
 const rerankingCheckbox = document.getElementById('reranking');
 const advancedToggle = document.getElementById('advancedToggle');
 const advancedOptions = document.getElementById('advancedOptions');
 const toggleIcon = document.getElementById('toggleIcon');
+const recallensLink = document.getElementById('recallensLink') || document.getElementById('paperlessLink');
+const paperlessLink = recallensLink;
 
-// Slider elements
+// Sliders & Values
 const recencyWeight = document.getElementById('recencyWeight');
 const recencyWeightValue = document.getElementById('recencyWeightValue');
 const recencyDecay = document.getElementById('recencyDecay');
@@ -20,56 +30,113 @@ const retrievalTopKValue = document.getElementById('retrievalTopKValue');
 const topK = document.getElementById('topK');
 const topKValue = document.getElementById('topKValue');
 
-let isSearching = false;
-let paperlessBaseUrl = 'http://localhost:8000'; // Default fallback
-
-// Fetch configuration on page load
-async function loadConfig() {
-    try {
-        const response = await fetch('/api/config');
-        const config = await response.json();
-        paperlessBaseUrl = config.paperless_url || paperlessBaseUrl;
-        console.log('Loaded Paperless URL:', paperlessBaseUrl);
-    } catch (error) {
-        console.error('Failed to load config:', error);
-    }
-}
-
-// Load config when page loads
-loadConfig();
-
-// Populate year dropdowns
-function populateYearDropdowns() {
-    const currentYear = new Date().getFullYear();
-    const yearFrom = document.getElementById('yearFrom');
-    const yearTo = document.getElementById('yearTo');
-
-    for (let year = currentYear + 2; year >= currentYear - 20; year--) {
-        const optionFrom = document.createElement('option');
-        optionFrom.value = year;
-        optionFrom.textContent = year;
-        yearFrom.appendChild(optionFrom);
-
-        const optionTo = document.createElement('option');
-        optionTo.value = year;
-        optionTo.textContent = year;
-        yearTo.appendChild(optionTo);
-    }
-}
-
-populateYearDropdowns();
-
-// Collapsible filter panels
+// Filter Elements
+const yearFrom = document.getElementById('yearFrom');
+const yearTo = document.getElementById('yearTo');
 const tagsToggle = document.getElementById('tagsToggle');
 const correspondentsToggle = document.getElementById('correspondentsToggle');
 const tagsPanel = document.getElementById('tagsPanel');
 const correspondentsPanel = document.getElementById('correspondentsPanel');
+const clearFiltersBtn = document.getElementById('clearFilters');
+const tagsList = document.getElementById('tagsList');
+const correspondentsList = document.getElementById('correspondentsList');
+const tagSearch = document.getElementById('tagSearch');
+const correspondentSearch = document.getElementById('correspondentSearch');
+const logicButtons = document.querySelectorAll('.logic-btn');
 
+// State
+let isSearching = false;
+let recallensBaseUrl = 'http://localhost:8000';
+let paperlessBaseUrl = recallensBaseUrl;
+let allTags = [];
+let allCorrespondents = [];
+let selectedTags = new Set();
+let selectedCorrespondent = null;
+let tagLogic = 'any';
+let currentQuery = '';
+let currentQueryContext = null;
+let progressiveResults = [];
+let currentSearchResults = [];
+
+// 1. Initial Configuration & Setup
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config');
+        if (response.ok) {
+            const config = await response.json();
+            recallensBaseUrl = config.recallens_url || config.paperless_url || recallensBaseUrl;
+            paperlessBaseUrl = recallensBaseUrl;
+            if (recallensLink) {
+                recallensLink.href = recallensBaseUrl;
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load backend config, using defaults:', error);
+    }
+}
+loadConfig();
+
+// Populate Year Selector Dropdowns
+function populateYearDropdowns() {
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear + 1; year >= currentYear - 15; year--) {
+        const optFrom = document.createElement('option');
+        optFrom.value = year;
+        optFrom.textContent = year;
+        yearFrom.appendChild(optFrom);
+
+        const optTo = document.createElement('option');
+        optTo.value = year;
+        optTo.textContent = year;
+        yearTo.appendChild(optTo);
+    }
+}
+populateYearDropdowns();
+
+// 2. Preset Query Chips (Student & Everyday Records)
+document.querySelectorAll('.preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        const queryText = chip.getAttribute('data-query');
+        if (queryText) {
+            searchInput.value = queryText;
+            updateClearButtonVisibility();
+            performSearch();
+        }
+    });
+});
+
+// Clear Search Input Button
+searchInput.addEventListener('input', updateClearButtonVisibility);
+function updateClearButtonVisibility() {
+    if (searchInput.value.trim().length > 0) {
+        clearSearchBtn.style.display = 'block';
+    } else {
+        clearSearchBtn.style.display = 'none';
+    }
+}
+clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    updateClearButtonVisibility();
+    searchInput.focus();
+});
+
+// Global Keyboard Shortcuts (/ to focus search, Esc to clear)
+document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement !== searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+    } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        searchInput.value = '';
+        updateClearButtonVisibility();
+        searchInput.blur();
+    }
+});
+
+// 3. Filter Drawer Toggles & Logic
 tagsToggle.addEventListener('click', () => {
     tagsPanel.classList.toggle('collapsed');
     tagsToggle.classList.toggle('active');
-
-    // Close other panel
     correspondentsPanel.classList.add('collapsed');
     correspondentsToggle.classList.remove('active');
 });
@@ -77,190 +144,16 @@ tagsToggle.addEventListener('click', () => {
 correspondentsToggle.addEventListener('click', () => {
     correspondentsPanel.classList.toggle('collapsed');
     correspondentsToggle.classList.toggle('active');
-
-    // Close other panel
     tagsPanel.classList.add('collapsed');
     tagsToggle.classList.remove('active');
 });
 
-// Tag logic toggle (All/Any)
-const logicButtons = document.querySelectorAll('.logic-btn');
-let tagLogic = 'any'; // Default to 'any' (OR logic)
-
 logicButtons.forEach(button => {
     button.addEventListener('click', () => {
-        tagLogic = button.getAttribute('data-logic');
+        tagLogic = button.getAttribute('data-logic') || 'any';
         logicButtons.forEach(btn => btn.classList.remove('active'));
         button.classList.add('active');
     });
-});
-
-// Load tags and correspondents
-const clearFiltersBtn = document.getElementById('clearFilters');
-const yearFrom = document.getElementById('yearFrom');
-const yearTo = document.getElementById('yearTo');
-const tagsList = document.getElementById('tagsList');
-const correspondentsList = document.getElementById('correspondentsList');
-const tagSearch = document.getElementById('tagSearch');
-const correspondentSearch = document.getElementById('correspondentSearch');
-
-let allTags = [];
-let allCorrespondents = [];
-let selectedTags = new Set();
-let selectedCorrespondent = null;
-
-async function loadTags() {
-    try {
-        const response = await fetch('/api/paperless/tags');
-        const data = await response.json();
-        allTags = data.tags;
-        renderTags(allTags);
-    } catch (error) {
-        console.error('Failed to load tags:', error);
-        tagsList.innerHTML = '<div class="loading">Failed to load tags</div>';
-    }
-}
-
-function renderTags(tags) {
-    tagsList.innerHTML = '';
-
-    if (tags.length === 0) {
-        tagsList.innerHTML = '<div class="loading">No tags found</div>';
-        return;
-    }
-
-    tags.forEach(tag => {
-        const item = document.createElement('div');
-        item.className = 'filter-item-checkbox';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = `tag-${tag.id}`;
-        checkbox.value = tag.name;
-        checkbox.checked = selectedTags.has(tag.name);
-
-        checkbox.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                selectedTags.add(tag.name);
-            } else {
-                selectedTags.delete(tag.name);
-            }
-        });
-
-        const label = document.createElement('label');
-        label.htmlFor = `tag-${tag.id}`;
-
-        const badge = document.createElement('span');
-        badge.className = 'tag-badge';
-        badge.textContent = tag.name;
-        badge.style.backgroundColor = tag.color;
-        badge.style.color = getContrastColor(tag.color);
-
-        const count = document.createElement('span');
-        count.className = 'doc-count';
-        count.textContent = tag.document_count;
-
-        label.appendChild(badge);
-        label.appendChild(count);
-        item.appendChild(checkbox);
-        item.appendChild(label);
-        tagsList.appendChild(item);
-    });
-}
-
-// Calculate contrasting text color for tag badges
-function getContrastColor(hexColor) {
-    // Convert hex to RGB
-    const r = parseInt(hexColor.slice(1, 3), 16);
-    const g = parseInt(hexColor.slice(3, 5), 16);
-    const b = parseInt(hexColor.slice(5, 7), 16);
-
-    // Calculate relative luminance
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
-    return luminance > 0.5 ? '#000000' : '#ffffff';
-}
-
-// Tag search filter
-tagSearch.addEventListener('input', (e) => {
-    const searchTerm = e.target.value.toLowerCase();
-    const filtered = allTags.filter(tag =>
-        tag.name.toLowerCase().includes(searchTerm)
-    );
-    renderTags(filtered);
-});
-
-async function loadCorrespondents() {
-    try {
-        const response = await fetch('/api/paperless/correspondents');
-        const data = await response.json();
-        allCorrespondents = data.correspondents;
-        renderCorrespondents(allCorrespondents);
-    } catch (error) {
-        console.error('Failed to load correspondents:', error);
-        correspondentsList.innerHTML = '<div class="loading">Failed to load correspondents</div>';
-    }
-}
-
-function renderCorrespondents(correspondents) {
-    correspondentsList.innerHTML = '';
-
-    if (correspondents.length === 0) {
-        correspondentsList.innerHTML = '<div class="loading">No correspondents found</div>';
-        return;
-    }
-
-    // Add correspondent options
-    correspondents.forEach(corr => {
-        const item = document.createElement('div');
-        item.className = 'filter-item-checkbox';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = `correspondent-${corr.id}`;
-        checkbox.value = corr.name;
-        checkbox.checked = selectedCorrespondent === corr.name;
-
-        checkbox.addEventListener('change', (e) => {
-            // Prevent default to handle manually
-            const wasChecked = e.target.checked;
-
-            // Only one correspondent can be selected at a time - uncheck all first
-            document.querySelectorAll('#correspondentsList input[type="checkbox"]').forEach(cb => {
-                cb.checked = false;
-            });
-
-            if (wasChecked) {
-                selectedCorrespondent = corr.name;
-                e.target.checked = true;
-                console.log('Selected correspondent:', selectedCorrespondent);
-            } else {
-                selectedCorrespondent = null;
-                console.log('Cleared correspondent selection');
-            }
-        });
-
-        const label = document.createElement('label');
-        label.htmlFor = `correspondent-${corr.id}`;
-        label.innerHTML = `
-            <span>${corr.name}</span>
-            <span class="doc-count">${corr.document_count}</span>
-        `;
-
-        item.appendChild(checkbox);
-        item.appendChild(label);
-        correspondentsList.appendChild(item);
-    });
-}
-
-// Correspondent search filter
-correspondentSearch.addEventListener('input', (e) => {
-    const searchTerm = e.target.value.toLowerCase();
-    const filtered = allCorrespondents.filter(corr =>
-        corr.name.toLowerCase().includes(searchTerm)
-    );
-    // Note: renderCorrespondents will preserve selectedCorrespondent state
-    renderCorrespondents(filtered);
 });
 
 clearFiltersBtn.addEventListener('click', () => {
@@ -272,110 +165,178 @@ clearFiltersBtn.addEventListener('click', () => {
     renderCorrespondents(allCorrespondents);
 });
 
-// Load filters on page load
+// Load Tags from API
+async function loadTags() {
+    try {
+        const response = await fetch('/api/recallens/tags');
+        if (response.ok) {
+            const data = await response.json();
+            allTags = data.tags || [];
+            renderTags(allTags);
+        }
+    } catch (error) {
+        tagsList.innerHTML = '<div class="loading-state">Could not load tags</div>';
+    }
+}
+
+function renderTags(tags) {
+    tagsList.innerHTML = '';
+    if (!tags || tags.length === 0) {
+        tagsList.innerHTML = '<div class="loading-state">No tags available</div>';
+        return;
+    }
+
+    tags.forEach(tag => {
+        const isSelected = selectedTags.has(tag.name);
+        const chip = document.createElement('div');
+        chip.className = `filter-chip-item ${isSelected ? 'selected' : ''}`;
+        chip.innerHTML = `
+            <span>${escapeHtml(tag.name)}</span>
+            <span class="doc-count">${tag.document_count || 0}</span>
+        `;
+        chip.addEventListener('click', () => {
+            if (selectedTags.has(tag.name)) {
+                selectedTags.delete(tag.name);
+                chip.classList.remove('selected');
+            } else {
+                selectedTags.add(tag.name);
+                chip.classList.add('selected');
+            }
+        });
+        tagsList.appendChild(chip);
+    });
+}
+
+tagSearch.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allTags.filter(t => t.name.toLowerCase().includes(term));
+    renderTags(filtered);
+});
+
+// Load Correspondents
+async function loadCorrespondents() {
+    try {
+        const response = await fetch('/api/recallens/correspondents');
+        if (response.ok) {
+            const data = await response.json();
+            allCorrespondents = data.correspondents || [];
+            renderCorrespondents(allCorrespondents);
+        }
+    } catch (error) {
+        correspondentsList.innerHTML = '<div class="loading-state">Could not load correspondents</div>';
+    }
+}
+
+function renderCorrespondents(corrs) {
+    correspondentsList.innerHTML = '';
+    if (!corrs || corrs.length === 0) {
+        correspondentsList.innerHTML = '<div class="loading-state">No correspondents available</div>';
+        return;
+    }
+
+    corrs.forEach(corr => {
+        const isSelected = selectedCorrespondent === corr.name;
+        const chip = document.createElement('div');
+        chip.className = `filter-chip-item ${isSelected ? 'selected' : ''}`;
+        chip.innerHTML = `
+            <span>${escapeHtml(corr.name)}</span>
+            <span class="doc-count">${corr.document_count || 0}</span>
+        `;
+        chip.addEventListener('click', () => {
+            if (selectedCorrespondent === corr.name) {
+                selectedCorrespondent = null;
+                chip.classList.remove('selected');
+            } else {
+                selectedCorrespondent = corr.name;
+                renderCorrespondents(allCorrespondents);
+            }
+        });
+        correspondentsList.appendChild(chip);
+    });
+}
+
+correspondentSearch.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allCorrespondents.filter(c => c.name.toLowerCase().includes(term));
+    renderCorrespondents(filtered);
+});
+
 loadTags();
 loadCorrespondents();
 
-// Toggle advanced options
+// Advanced Accordion Toggle
 advancedToggle.addEventListener('click', () => {
     advancedOptions.classList.toggle('show');
     toggleIcon.textContent = advancedOptions.classList.contains('show') ? '▼' : '▶';
 });
 
-// Update slider values
-recencyWeight.addEventListener('input', (e) => {
-    recencyWeightValue.textContent = e.target.value;
-});
-recencyDecay.addEventListener('input', (e) => {
-    recencyDecayValue.textContent = e.target.value;
-});
-hybridAlpha.addEventListener('input', (e) => {
-    hybridAlphaValue.textContent = e.target.value;
-});
-rerankInfluence.addEventListener('input', (e) => {
-    rerankInfluenceValue.textContent = e.target.value;
-});
-retrievalTopK.addEventListener('input', (e) => {
-    retrievalTopKValue.textContent = e.target.value;
-});
-topK.addEventListener('input', (e) => {
-    topKValue.textContent = e.target.value;
-});
+// Slider updates
+recencyWeight.addEventListener('input', (e) => recencyWeightValue.textContent = e.target.value);
+recencyDecay.addEventListener('input', (e) => recencyDecayValue.textContent = `${e.target.value}d`);
+hybridAlpha.addEventListener('input', (e) => hybridAlphaValue.textContent = e.target.value);
+rerankInfluence.addEventListener('input', (e) => rerankInfluenceValue.textContent = e.target.value);
+retrievalTopK.addEventListener('input', (e) => retrievalTopKValue.textContent = e.target.value);
+topK.addEventListener('input', (e) => topKValue.textContent = e.target.value);
 
-// Search on button click
+// Search Triggers
 searchButton.addEventListener('click', performSearch);
-
-// Search on Enter key
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         performSearch();
     }
 });
 
+// 4. Search Execution Engine
 function buildFilters() {
     const filters = {};
-
-    // Year range filter (convert to full date ranges)
     if (yearFrom.value || yearTo.value) {
         filters.created_date = {};
-        if (yearFrom.value) {
-            filters.created_date.gte = `${yearFrom.value}-01-01`;
-        }
-        if (yearTo.value) {
-            filters.created_date.lte = `${yearTo.value}-12-31`;
-        }
+        if (yearFrom.value) filters.created_date.gte = `${yearFrom.value}-01-01`;
+        if (yearTo.value) filters.created_date.lte = `${yearTo.value}-12-31`;
     }
-
-    // Tags filter (multiple selection with All/Any logic)
     if (selectedTags.size > 0) {
         filters.tags = Array.from(selectedTags);
-        filters.tag_logic = tagLogic;  // 'any' or 'all'
+        filters.tag_logic = tagLogic;
     }
-
-    // Correspondent filter
     if (selectedCorrespondent !== null) {
-        // Empty string means "not assigned"
         filters.correspondent_name = selectedCorrespondent;
     }
-
-    console.log('Built filters:', filters);
-    console.log('Selected tags:', selectedTags);
-    console.log('Selected correspondent:', selectedCorrespondent);
-
     return Object.keys(filters).length > 0 ? filters : null;
 }
 
 async function performSearch() {
     const query = searchInput.value.trim();
-
-    if (!query || isSearching) {
-        return;
-    }
+    if (!query || isSearching) return;
 
     isSearching = true;
-    searchButton.disabled = true;
-    searchButton.textContent = 'Searching...';
+    currentQuery = query;
+    currentQueryContext = null;
+    progressiveResults = [];
+    currentSearchResults = [];
 
-    // Show progress UI (all stages shown as pending/waiting initially)
+    searchButton.disabled = true;
+    searchButton.querySelector('.btn-text').textContent = 'Searching...';
+
+    // Show modern 3-stage progress deck
     contentDiv.innerHTML = `
         <div class="progress-container">
             <div class="progress-stage" id="progress-query">
                 <div class="progress-stage-header">
                     <span class="progress-stage-name">
-                        <span class="progress-icon">⏳</span>
-                        Query Expansion
+                        <span class="progress-icon">✨</span>
+                        Understanding Context & Expanding Query
                     </span>
-                    <span class="progress-stage-status">Waiting...</span>
+                    <span class="progress-stage-status">Analyzing entities & dates...</span>
                 </div>
                 <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" style="width: 0%"></div>
+                    <div class="progress-bar-fill indeterminate"></div>
                 </div>
             </div>
             <div class="progress-stage" id="progress-retrieval">
                 <div class="progress-stage-header">
                     <span class="progress-stage-name">
-                        <span class="progress-icon">🔍</span>
-                        Retrieval
+                        <span class="progress-icon">⚡</span>
+                        Dual-Stream Retrieval (Qdrant Vectors + Structured Database)
                     </span>
                     <span class="progress-stage-status">Waiting...</span>
                 </div>
@@ -387,7 +348,7 @@ async function performSearch() {
                 <div class="progress-stage-header">
                     <span class="progress-stage-name">
                         <span class="progress-icon">🎯</span>
-                        Reranking
+                        Multi-Signal Reranking (S = w_s·S_s + w_e·S_e + w_v·S_v + w_t·S_t + w_r·S_r)
                     </span>
                     <span class="progress-stage-status">Waiting...</span>
                 </div>
@@ -414,22 +375,19 @@ async function performSearch() {
 
         if (filters) {
             searchPayload.filters = filters;
-            console.log('Applying filters:', filters);
         }
 
         const response = await fetch('/api/search/stream', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(searchPayload)
         });
 
         if (!response.ok) {
-            throw new Error('Search failed');
+            throw new Error(`Search request failed (HTTP ${response.status})`);
         }
 
-        // Process SSE stream
+        // Process SSE Stream
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -440,12 +398,11 @@ async function performSearch() {
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n\n');
-            buffer = lines.pop(); // Keep incomplete line in buffer
+            buffer = lines.pop();
 
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     const data = JSON.parse(line.slice(6));
-                    console.log('SSE received:', data.type, Date.now());
                     handleProgressUpdate(data);
                 }
             }
@@ -453,230 +410,78 @@ async function performSearch() {
 
     } catch (error) {
         contentDiv.innerHTML = `
-            <div class="no-results">
-                <div class="no-results-icon">⚠️</div>
-                <h3>Search failed</h3>
-                <p>${error.message}</p>
+            <div class="no-results-card">
+                <div class="no-results-emoji">⚠️</div>
+                <h3>Search Failed</h3>
+                <p>${escapeHtml(error.message)}</p>
             </div>
         `;
     } finally {
         isSearching = false;
         searchButton.disabled = false;
-        searchButton.textContent = 'Search';
+        searchButton.querySelector('.btn-text').textContent = 'Find Document';
     }
 }
 
-// Store results being progressively updated
-let progressiveResults = [];
-let resultsContainer = null;
-let renderTimeout = null;
-
+// 5. SSE Streaming Handler
 function handleProgressUpdate(data) {
     if (data.type === 'progress') {
-        console.log('Progress update:', data.stage, data.message, 'done:', data.done, 'current:', data.current, 'total:', data.total);
-        // Use requestAnimationFrame to ensure the browser paints updates
         requestAnimationFrame(() => {
             updateProgressStage(data.stage, data.message, data.current, data.total, data.done);
         });
     } else if (data.type === 'initial_results') {
-        // Store all results and display top_k
-        console.log('Received initial_results:', data.data.results.length, 'results');
         currentQuery = data.data.query;
+        currentQueryContext = data.data.query_context || null;
         progressiveResults = data.data.results || [];
         currentSearchResults = [...progressiveResults];
         renderResults(data.data.query, data.data.expanded_query, data.data.retrieval_time_ms);
-        console.log('Rendered initial results');
     } else if (data.type === 'result_update') {
-        // Update individual result and re-render
         updateResult(data);
     } else if (data.type === 'highlights') {
-        // Add highlights to results
-        const highlightsMap = data.highlights;
-        for (const [paperlessId, highlights] of Object.entries(highlightsMap)) {
-            const result = progressiveResults.find(r => r.paperless_id == paperlessId);
-            if (result) {
-                result.highlights = highlights;
+        const highlightsMap = data.highlights || {};
+        for (const [docId, highlights] of Object.entries(highlightsMap)) {
+            const item = progressiveResults.find(r => (r.recallens_id || r.paperless_id) == docId);
+            if (item) {
+                item.highlights = highlights;
             }
         }
-        // Re-render to show highlights
         renderResults(currentQuery, null, null);
     } else if (data.type === 'done') {
-        // Hide progress bars
-        const progressContainer = document.querySelector('.progress-container');
-        if (progressContainer) {
-            progressContainer.style.display = 'none';
+        const progressEl = document.querySelector('.progress-container');
+        if (progressEl) {
+            progressEl.style.display = 'none';
         }
     } else if (data.type === 'error') {
-        throw new Error(data.message);
+        contentDiv.innerHTML = `
+            <div class="no-results-card">
+                <div class="no-results-emoji">⚠️</div>
+                <h3>Error During Search</h3>
+                <p>${escapeHtml(data.message)}</p>
+            </div>
+        `;
     }
 }
 
 function updateResult(data) {
-    // Find and update the result
-    const result = progressiveResults.find(r => r.paperless_id === data.paperless_id);
+    const updateId = data.recallens_id || data.paperless_id;
+    const result = progressiveResults.find(r => (r.recallens_id || r.paperless_id) === updateId);
     if (!result) return;
 
-    // Update scores
     result.rerank_score = data.rerank_score;
     result.final_score = data.final_score;
     result.recency_boost = data.recency_boost;
+    result.context_score = data.context_score;
+    result.matched_entities = data.matched_entities || [];
+    result.matched_event = data.matched_event;
+    result.matched_relationship = data.matched_relationship;
+    result.evidence = data.evidence;
 
-    // Update currentSearchResults too
-    const currentResult = currentSearchResults.find(r => r.paperless_id === data.paperless_id);
+    const currentResult = currentSearchResults.find(r => (r.recallens_id || r.paperless_id) === updateId);
     if (currentResult) {
-        currentResult.rerank_score = data.rerank_score;
-        currentResult.final_score = data.final_score;
-        currentResult.recency_boost = data.recency_boost;
+        Object.assign(currentResult, result);
     }
 
-    // Re-render immediately with updated scores
     renderResults(currentQuery, null, null);
-}
-
-function renderResults(query, expandedQuery, retrievalTimeMs) {
-    console.log('renderResults called, results count:', progressiveResults.length);
-    const renderStart = Date.now();
-
-    // Sort by final_score
-    progressiveResults.sort((a, b) => (b.final_score || b.score) - (a.final_score || a.score));
-
-    // Get top_k
-    const currentTopK = parseInt(document.getElementById('topK').value);
-    const displayResults = progressiveResults.slice(0, currentTopK);
-
-    // Find or create results container
-    if (!resultsContainer) {
-        const existingContainer = document.querySelector('.results');
-        if (existingContainer) {
-            resultsContainer = existingContainer;
-        }
-    }
-
-    // Build HTML for results
-    let html = '';
-
-    // Add stats and expanded query if this is initial render
-    if (retrievalTimeMs !== null && retrievalTimeMs !== undefined) {
-        html += `<div class="stats">About ${progressiveResults.length} results (${(retrievalTimeMs / 1000).toFixed(2)} seconds)</div>`;
-
-        if (expandedQuery && expandedQuery !== query) {
-            html += `
-                <div class="expanded-query">
-                    <strong>Expanded query:</strong> ${escapeHtml(expandedQuery)}
-                </div>
-            `;
-        }
-    }
-
-    html += '<div class="results">';
-
-    displayResults.forEach((result, index) => {
-        const paperlessUrl = getPaperlessUrl(result.paperless_id);
-        const downloadUrl = getDownloadUrl(result.paperless_id);
-        const finalScore = result.final_score || result.score;
-
-        html += `
-            <div class="result" data-paperless-id="${result.paperless_id}">
-                <a href="${paperlessUrl}" target="_blank" class="result-title">
-                    #${index + 1} - ${escapeHtml(result.title)}
-                </a>
-
-                <div class="result-meta">
-                    ${result.correspondent_name ? `<span class="result-meta-item">👤 ${escapeHtml(result.correspondent_name)}</span>` : ''}
-                    ${result.created_date ? `<span class="result-meta-item">📅 ${formatDate(result.created_date)}</span>` : ''}
-                </div>
-
-                <div class="ranking-info">
-                    <div class="ranking-item">
-                        <span class="ranking-label">Final Score:</span>
-                        <span class="final-score">${finalScore.toFixed(4)}</span>
-                    </div>
-                    <div class="ranking-item">
-                        <span class="ranking-label">Initial:</span>
-                        <span>${result.score.toFixed(4)}</span>
-                    </div>
-                    ${result.rerank_score != null ? `
-                        <div class="ranking-item">
-                            <span class="ranking-label">Rerank:</span>
-                            <span>
-                                <span class="rerank-score">${result.rerank_score.toFixed(2)}/10</span>
-                                <button class="explain-btn" onclick="explainScore('${result.paperless_id}', event)" title="Get LLM explanation">
-                                    🤔 Explain
-                                </button>
-                            </span>
-                        </div>
-                        <div class="ranking-item explanation-container" id="explanation-${result.paperless_id}" style="grid-column: 1 / -1; display: none;">
-                            <span class="ranking-label">Reason:</span>
-                            <span class="explanation-text" style="font-style: italic; color: #666;"></span>
-                        </div>
-                    ` : ''}
-                    ${result.recency_boost && result.recency_boost > 0 ? `
-                        <div class="ranking-item">
-                            <span class="ranking-label">Recency Boost:</span>
-                            <span class="recency-boost">+${(result.recency_boost * 100).toFixed(1)}%</span>
-                        </div>
-                    ` : ''}
-                    <div class="ranking-item">
-                        <span class="ranking-label">Chunk:</span>
-                        <span>${result.chunk_index}</span>
-                    </div>
-                </div>
-
-                <div class="actions" style="margin-top: 12px;">
-                    <a href="${paperlessUrl}" target="_blank" class="action-button primary">📄 View in Paperless</a>
-                    <a href="${downloadUrl}" target="_blank" class="action-button">⬇️ Download</a>
-                </div>
-
-                ${result.tags && result.tags.length > 0 ? `
-                    <div class="tags">
-                        ${result.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
-                    </div>
-                ` : ''}
-
-                ${result.highlights && result.highlights.length > 0 ? `
-                    <div class="result-content">
-                        ${result.highlights.map(h => `<div class="highlight">...${h}...</div>`).join('')}
-                    </div>
-                ` : ''}
-
-                <div class="metadata-toggle" onclick="toggleMetadata(${result.paperless_id})">
-                    <span>📋 Document Metadata</span>
-                    <span class="metadata-toggle-icon">▼</span>
-                </div>
-                <div class="metadata-content" id="metadata-${result.paperless_id}">
-                    <div class="metadata-grid">
-                        <span class="metadata-label">Document ID:</span>
-                        <span class="metadata-value">${result.paperless_id}</span>
-                        <span class="metadata-label">Final Score:</span>
-                        <span class="metadata-value">${finalScore.toFixed(6)}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-
-    html += '</div>';
-
-    // Insert or update results
-    const progressContainer = contentDiv.querySelector('.progress-container');
-    if (progressContainer) {
-        // Remove all siblings after progress container (old results)
-        let sibling = progressContainer.nextElementSibling;
-        while (sibling) {
-            const next = sibling.nextElementSibling;
-            sibling.remove();
-            sibling = next;
-        }
-        // Insert after progress container
-        progressContainer.insertAdjacentHTML('afterend', html);
-    } else {
-        contentDiv.innerHTML = html;
-    }
-
-    // Update resultsContainer reference
-    resultsContainer = contentDiv.querySelector('.results');
-
-    console.log('renderResults completed in', Date.now() - renderStart, 'ms');
 }
 
 function updateProgressStage(stage, message, current, total, done) {
@@ -698,123 +503,425 @@ function updateProgressStage(stage, message, current, total, done) {
     const iconEl = stageEl.querySelector('.progress-icon');
 
     if (done) {
-        statusEl.textContent = '✓';
+        statusEl.textContent = 'Completed';
         fillEl.style.width = '100%';
         fillEl.classList.remove('indeterminate');
-        iconEl.textContent = '✅';
+        if (iconEl) iconEl.textContent = '✅';
     } else if (current !== undefined && total) {
-        const percent = (current / total) * 100;
-        statusEl.textContent = message || `${current}/${total}`;
+        const percent = Math.min(100, Math.round((current / total) * 100));
+        statusEl.textContent = message || `${current} / ${total}`;
         fillEl.style.width = `${percent}%`;
         fillEl.classList.remove('indeterminate');
     } else {
-        // Active stage (indeterminate)
-        statusEl.textContent = message || '';
+        statusEl.textContent = message || 'Processing...';
         fillEl.classList.add('indeterminate');
-        // Force browser to repaint before next update
-        void fillEl.offsetHeight;
     }
 }
 
-function getPaperlessUrl(documentId) {
-    return `${paperlessBaseUrl}/documents/${documentId}`;
-}
+// 6. Modern Result Cards Rendering
+function renderResults(query, expandedQuery, retrievalTimeMs) {
+    // Sort by final_score (calibrated multi-signal score)
+    progressiveResults.sort((a, b) => (b.final_score || b.score) - (a.final_score || a.score));
 
-function getDownloadUrl(documentId) {
-    return `${paperlessBaseUrl}/api/documents/${documentId}/download/`;
-}
+    const currentTopK = parseInt(topK.value) || 10;
+    const displayResults = progressiveResults.slice(0, currentTopK);
 
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
+    let html = '';
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+    // Render Context Understanding Banner (The "Brain" of RecalLens)
+    if (currentQueryContext) {
+        html += renderContextBanner(currentQueryContext);
+    }
 
-// Make toggleMetadata globally accessible
-window.toggleMetadata = function(paperlessId) {
-    const metadataContent = document.getElementById(`metadata-${paperlessId}`);
-    const toggle = metadataContent.previousElementSibling;
-
-    if (metadataContent.classList.contains('expanded')) {
-        metadataContent.classList.remove('expanded');
-        toggle.classList.remove('expanded');
+    // Results Header Bar
+    if (progressiveResults.length > 0) {
+        const timeText = retrievalTimeMs ? `in ${(retrievalTimeMs / 1000).toFixed(2)}s` : '';
+        html += `
+            <div class="results-header-bar">
+                <div class="results-count-text">
+                    Showing <span class="results-count-highlight">${displayResults.length}</span> of ${progressiveResults.length} relevant documents ${timeText}
+                </div>
+            </div>
+        `;
     } else {
-        metadataContent.classList.add('expanded');
-        toggle.classList.add('expanded');
+        html += `
+            <div class="no-results-card">
+                <div class="no-results-emoji">🔍</div>
+                <h3>No documents matched your query</h3>
+                <p>Try searching with broader terms, or adjusting your entity or year filters above.</p>
+            </div>
+        `;
+        replaceResultsHTML(html);
+        return;
     }
-};
 
-// Store current search results for explain feature
-let currentSearchResults = [];
-let currentQuery = '';
+    // Results Stack
+    html += '<div class="results-stack">';
 
-// Make explainScore globally accessible
-window.explainScore = async function(paperlessId, event) {
+    displayResults.forEach((result, index) => {
+        const activeDocId = result.recallens_id || result.paperless_id;
+        const documentUrl = `${recallensBaseUrl}/documents/${activeDocId}`;
+        const downloadUrl = `${recallensBaseUrl}/api/documents/${activeDocId}/download/`;
+        const finalScore = result.final_score !== undefined && result.final_score !== null ? result.final_score : result.score;
+        const matchPercent = Math.min(100, Math.max(10, Math.round(finalScore * 100)));
+
+        // Determine gauge tier
+        let gaugeClass = 'gauge-high';
+        if (matchPercent < 70) gaugeClass = 'gauge-low';
+        else if (matchPercent < 85) gaugeClass = 'gauge-mid';
+
+        // Document Category Pill
+        const docCategory = inferCategory(result);
+
+        // Grounded Evidence Text
+        const evidenceText = result.evidence || buildClientEvidence(result);
+
+        html += `
+            <article class="result-card-outer" data-recallens-id="${activeDocId}" data-paperless-id="${activeDocId}">
+                <div class="result-card-inner">
+                    <!-- Top Row: Category, Page & Context Gauge -->
+                    <div class="card-top-row">
+                        <div class="card-badge-cluster">
+                            <span class="doc-type-badge ${docCategory.cssClass}">
+                                <span>${docCategory.icon}</span>
+                                <span>${escapeHtml(docCategory.label)}</span>
+                            </span>
+                            <span class="page-indicator-badge">
+                                📄 Page ${result.page_number || 1}
+                            </span>
+                        </div>
+
+                        <div class="context-match-gauge ${gaugeClass}" title="Multi-signal context score based on entity, event, date proximity & semantic match">
+                            <span class="gauge-bar-track">
+                                <span class="gauge-bar-fill" style="width: ${matchPercent}%"></span>
+                            </span>
+                            <span>${matchPercent}% Context Match</span>
+                        </div>
+                    </div>
+
+                    <!-- Document Title -->
+                    <a href="${paperlessUrl}" target="_blank" class="card-doc-title">
+                        <span class="title-rank-num">#${index + 1}</span>
+                        <span>${escapeHtml(result.title)}</span>
+                        <span class="title-external-icon">↗</span>
+                    </a>
+
+                    <!-- Metadata Row -->
+                    <div class="card-meta-row">
+                        ${result.correspondent_name ? `
+                            <span class="meta-chip-item">
+                                <span>👤</span>
+                                <strong>${escapeHtml(result.correspondent_name)}</strong>
+                            </span>
+                        ` : ''}
+                        ${result.created_date ? `
+                            <span class="meta-chip-item">
+                                <span>📅</span>
+                                <span>${formatDate(result.created_date)}</span>
+                            </span>
+                        ` : ''}
+                        ${result.recency_boost && result.recency_boost > 0 ? `
+                            <span class="meta-chip-item" style="color: var(--emerald-text);">
+                                <span>⚡ Recency +${(result.recency_boost * 100).toFixed(0)}%</span>
+                            </span>
+                        ` : ''}
+                    </div>
+
+                    <!-- Grounded Evidence Box (Why this matched) -->
+                    ${evidenceText ? `
+                        <div class="grounded-evidence-box">
+                            <div class="evidence-sparkle-icon">✨</div>
+                            <div class="evidence-content">
+                                <div class="evidence-label">Grounded Context Proof</div>
+                                <div class="evidence-text">${escapeHtml(evidenceText)}</div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Highlights & Content Excerpts -->
+                    ${result.highlights && result.highlights.length > 0 ? `
+                        <div class="card-highlights">
+                            ${result.highlights.map(h => `
+                                <div class="highlight-pill-snippet">...${formatHighlightText(h)}...</div>
+                            `).join('')}
+                        </div>
+                    ` : (result.content ? `
+                        <div class="card-highlights">
+                            <div class="highlight-pill-snippet">${escapeHtml(result.content.slice(0, 240))}...</div>
+                        </div>
+                    ` : '')}
+
+                    <!-- Document Tags -->
+                    ${result.tags && result.tags.length > 0 ? `
+                        <div class="card-tags-row">
+                            ${result.tags.map(t => `<span class="card-tag-pill">#${escapeHtml(t)}</span>`).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- Actions Bar -->
+                    <div class="card-actions-bar">
+                        <a href="${documentUrl}" target="_blank" class="btn-action-primary">
+                            <span>📄 View in RecalLens</span>
+                            <span>↗</span>
+                        </a>
+                        <a href="${downloadUrl}" target="_blank" class="btn-action-secondary">
+                            <span>⬇️ Download PDF</span>
+                        </a>
+                        <button class="btn-action-secondary" onclick="toggleExplanation(${activeDocId}, event)">
+                            <span>💡 Explain Match</span>
+                        </button>
+                        <button class="btn-action-secondary" onclick="copySnippet(${activeDocId}, this)">
+                            <span>📋 Copy Text</span>
+                        </button>
+                        <button class="btn-action-secondary" onclick="toggleBreakdown(${activeDocId})">
+                            <span>⚙️ Score Details</span>
+                        </button>
+                    </div>
+
+                    <!-- Interactive AI Explanation Drawer -->
+                    <div class="drawer-explanation" id="explanation-${activeDocId}">
+                        <div class="drawer-header-row">AI Relevance Justification</div>
+                        <div class="explanation-body-text" id="explanation-text-${activeDocId}">
+                            Loading intelligent rationale...
+                        </div>
+                    </div>
+
+                    <!-- Technical Score Breakdown Drawer -->
+                    <div class="drawer-breakdown" id="breakdown-${activeDocId}">
+                        <div class="drawer-header-row">Multi-Signal Formula Breakdown</div>
+                        <div class="breakdown-grid">
+                            <div class="breakdown-stat-card">
+                                <div class="breakdown-stat-name">Final Score</div>
+                                <div class="breakdown-stat-val" style="color: var(--brand-primary);">${finalScore.toFixed(4)}</div>
+                            </div>
+                            <div class="breakdown-stat-card">
+                                <div class="breakdown-stat-name">Initial Vector</div>
+                                <div class="breakdown-stat-val">${result.score.toFixed(4)}</div>
+                            </div>
+                            <div class="breakdown-stat-card">
+                                <div class="breakdown-stat-name">Rerank Score</div>
+                                <div class="breakdown-stat-val">${result.rerank_score ? (result.rerank_score).toFixed(2) + '/10' : 'N/A'}</div>
+                            </div>
+                            <div class="breakdown-stat-card">
+                                <div class="breakdown-stat-name">Context Score</div>
+                                <div class="breakdown-stat-val">${result.context_score ? result.context_score.toFixed(4) : finalScore.toFixed(4)}</div>
+                            </div>
+                            <div class="breakdown-stat-card">
+                                <div class="breakdown-stat-name">Chunk Index</div>
+                                <div class="breakdown-stat-val">${result.chunk_index || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        `;
+    });
+
+    html += '</div>';
+    replaceResultsHTML(html);
+}
+
+// Render Context Understanding Banner
+function renderContextBanner(ctx) {
+    const slots = [];
+    if (ctx.item || ctx.entity || ctx.person) {
+        const entVal = ctx.item || ctx.entity || ctx.person;
+        slots.push(`<div class="context-slot-pill slot-entity"><span class="slot-key">Entity</span> <strong>${escapeHtml(entVal)}</strong></div>`);
+    }
+    if (ctx.event) {
+        slots.push(`<div class="context-slot-pill slot-event"><span class="slot-key">Event</span> <strong>${escapeHtml(ctx.event)}</strong></div>`);
+    }
+    if (ctx.resolved_date_start || ctx.target_date || ctx.time_reference) {
+        let dateText = ctx.time_reference || '';
+        if (ctx.resolved_date_start && ctx.resolved_date_end) {
+            dateText = `${ctx.resolved_date_start} → ${ctx.resolved_date_end}`;
+        } else if (ctx.target_date) {
+            dateText = ctx.target_date;
+        }
+        slots.push(`<div class="context-slot-pill slot-temporal"><span class="slot-key">Time</span> <strong>${escapeHtml(dateText)}</strong></div>`);
+    }
+    if (ctx.relationship) {
+        slots.push(`<div class="context-slot-pill slot-relation"><span class="slot-key">Relationship</span> <strong>${escapeHtml(ctx.relationship)}</strong></div>`);
+    }
+
+    if (slots.length === 0) return '';
+
+    return `
+        <div class="context-understanding-banner">
+            <div class="context-banner-header">
+                <div class="context-banner-title">
+                    <span>🧠 Context Reasoning</span>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
+                    Extracted Semantic Signals
+                </div>
+            </div>
+            <div class="context-slots-row">
+                ${slots.join('')}
+            </div>
+        </div>
+    `;
+}
+
+// Category Inferencer
+function inferCategory(result) {
+    const title = (result.title || '').toLowerCase();
+    const docType = (result.document_type || '').toLowerCase();
+    const tags = (result.tags || []).map(t => t.toLowerCase());
+
+    if (title.includes('receipt') || docType.includes('receipt') || title.includes('purchase') || tags.includes('receipt')) {
+        return { label: 'Receipt / Purchase', icon: '🧾', cssClass: 'type-receipt' };
+    }
+    if (title.includes('warranty') || docType.includes('warranty') || title.includes('service') || tags.includes('warranty')) {
+        return { label: 'Warranty & Service', icon: '🛡️', cssClass: 'type-warranty' };
+    }
+    if (title.includes('lease') || title.includes('contract') || title.includes('agreement') || tags.includes('contract')) {
+        return { label: 'Contract / Lease', icon: '📄', cssClass: 'type-contract' };
+    }
+    if (title.includes('prescription') || title.includes('medical') || title.includes('doctor') || tags.includes('medical')) {
+        return { label: 'Medical Record', icon: '🏥', cssClass: 'type-medical' };
+    }
+    if (title.includes('tuition') || title.includes('grade') || title.includes('transcript') || tags.includes('education')) {
+        return { label: 'Academic Record', icon: '🎓', cssClass: 'type-receipt' };
+    }
+    if (title.includes('flight') || title.includes('ticket') || title.includes('travel') || tags.includes('travel')) {
+        return { label: 'Travel Booking', icon: '✈️', cssClass: 'type-service' };
+    }
+    return { label: result.document_type || 'Document', icon: '📋', cssClass: 'type-default' };
+}
+
+function buildClientEvidence(result) {
+    const parts = [];
+    if (result.matched_entities && result.matched_entities.length > 0) {
+        parts.push(`Entity: ${result.matched_entities.join(', ')}`);
+    }
+    if (result.matched_event) {
+        parts.push(`Event: ${result.matched_event}`);
+    }
+    if (result.created_date) {
+        parts.push(`Date: ${formatDate(result.created_date)}`);
+    }
+    if (result.matched_relationship) {
+        parts.push(`Relation: ${result.matched_relationship}`);
+    }
+    return parts.join(' | ');
+}
+
+function replaceResultsHTML(html) {
+    const progressContainer = contentDiv.querySelector('.progress-container');
+    if (progressContainer) {
+        let sibling = progressContainer.nextElementSibling;
+        while (sibling) {
+            const next = sibling.nextElementSibling;
+            sibling.remove();
+            sibling = next;
+        }
+        progressContainer.insertAdjacentHTML('afterend', html);
+    } else {
+        contentDiv.innerHTML = html;
+    }
+}
+
+// 7. Interactive Drawers & Actions
+window.toggleExplanation = async function(docId, event) {
     if (event) {
         event.preventDefault();
         event.stopPropagation();
     }
+    const drawer = document.getElementById(`explanation-${docId}`);
+    const textEl = document.getElementById(`explanation-text-${docId}`);
+    if (!drawer || !textEl) return;
 
-    const button = event ? event.target : document.querySelector(`button[data-paperless-id="${paperlessId}"]`);
-    const explanationContainer = document.getElementById(`explanation-${paperlessId}`);
-    if (!explanationContainer) {
-        console.error('Explanation container not found for', paperlessId);
-        return;
-    }
-    const explanationText = explanationContainer.querySelector('.explanation-text');
-
-    // If already showing, toggle off
-    if (explanationContainer.style.display !== 'none') {
-        explanationContainer.style.display = 'none';
+    if (drawer.classList.contains('show')) {
+        drawer.classList.remove('show');
         return;
     }
 
-    // Find the result data
-    const result = currentSearchResults.find(r => r.paperless_id == paperlessId);
-    if (!result) {
-        alert('Could not find result data');
-        return;
-    }
+    drawer.classList.add('show');
 
-    // Disable button and show loading
-    button.disabled = true;
-    explanationText.textContent = 'Loading explanation...';
-    explanationContainer.style.display = 'block';
+    const result = currentSearchResults.find(r => (r.recallens_id || r.paperless_id) == docId);
+    if (!result) return;
+
+    textEl.textContent = 'Generating grounded AI explanation...';
 
     try {
         const response = await fetch('/api/explain', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 query: currentQuery,
                 title: result.title,
                 content: result.content,
                 summary: result.summary,
                 tags: result.tags || [],
-                correspondent_name: result.correspondent_name
+                correspondent_name: result.correspondent_name,
+                matched_entities: result.matched_entities || [],
+                matched_event: result.matched_event || null,
+                matched_relationship: result.matched_relationship || null
             })
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        if (response.ok) {
+            const data = await response.json();
+            textEl.innerHTML = escapeHtml(data.explanation).replace(/\n/g, '<br>');
+        } else {
+            textEl.textContent = 'Could not generate explanation at this time.';
         }
-
-        const data = await response.json();
-        explanationText.textContent = data.explanation;
-
-    } catch (error) {
-        console.error('Explanation failed:', error);
-        explanationText.textContent = `Error: ${error.message}`;
-    } finally {
-        button.disabled = false;
+    } catch (err) {
+        textEl.textContent = `Explanation unavailable: ${err.message}`;
     }
 };
 
-// Focus on search input on page load
+window.toggleBreakdown = function(docId) {
+    const drawer = document.getElementById(`breakdown-${docId}`);
+    if (drawer) {
+        drawer.classList.toggle('show');
+    }
+};
+
+window.copySnippet = function(docId, button) {
+    const result = currentSearchResults.find(r => (r.recallens_id || r.paperless_id) == docId);
+    if (!result) return;
+
+    const textToCopy = (result.highlights && result.highlights.length > 0)
+        ? result.highlights.join('\n')
+        : (result.content || result.title);
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        const originalText = button.innerHTML;
+        button.innerHTML = '<span>✅ Copied!</span>';
+        setTimeout(() => {
+            button.innerHTML = originalText;
+        }, 1500);
+    }).catch(err => {
+        console.error('Failed to copy excerpt:', err);
+    });
+};
+
+// 8. Helper Utilities
+function formatDate(dateString) {
+    if (!dateString) return '';
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return String(dateString).slice(0, 10);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    } catch (e) {
+        return String(dateString).slice(0, 10);
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = String(text);
+    return div.innerHTML;
+}
+
+function formatHighlightText(text) {
+    const escaped = escapeHtml(text);
+    return escaped.replace(/==([^=]+)==/g, '<mark class="kw-mark">$1</mark>');
+}

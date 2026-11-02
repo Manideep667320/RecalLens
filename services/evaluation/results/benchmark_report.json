@@ -1,0 +1,381 @@
+{
+  "timestamp": "2026-11-03 00:38:30",
+  "split": "test",
+  "queries_evaluated": 10,
+  "total_corpus_docs": 1500,
+  "elapsed_seconds": 0.09,
+  "overall_results": {
+    "E1_BM25": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "E2_Vector": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "E3_Paperless_Hybrid": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "E4_RecalLens": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "A1_No_Entity": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "A2_No_Event": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "A3_No_Temporal": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "A4_No_Relationship": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    },
+    "A5_No_RRF": {
+      "p@1": 1.0,
+      "p@5": 0.2,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "map": 1.0
+    }
+  },
+  "by_difficulty": {
+    "Hard": {
+      "E1_BM25": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E2_Vector": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E3_Paperless_Hybrid": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E4_RecalLens": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A1_No_Entity": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A2_No_Event": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A3_No_Temporal": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A4_No_Relationship": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A5_No_RRF": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      }
+    },
+    "Medium": {
+      "E1_BM25": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E2_Vector": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E3_Paperless_Hybrid": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E4_RecalLens": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A1_No_Entity": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A2_No_Event": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A3_No_Temporal": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A4_No_Relationship": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A5_No_RRF": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      }
+    }
+  },
+  "by_query_type": {
+    "contextual_memory": {
+      "E1_BM25": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E2_Vector": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E3_Paperless_Hybrid": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E4_RecalLens": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A1_No_Entity": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A2_No_Event": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A3_No_Temporal": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A4_No_Relationship": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A5_No_RRF": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      }
+    },
+    "semantic": {
+      "E1_BM25": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E2_Vector": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E3_Paperless_Hybrid": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "E4_RecalLens": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A1_No_Entity": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A2_No_Event": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A3_No_Temporal": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A4_No_Relationship": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      },
+      "A5_No_RRF": {
+        "p@1": 1.0,
+        "p@5": 0.2,
+        "recall@5": 1.0,
+        "mrr": 1.0,
+        "ndcg@5": 1.0,
+        "map": 1.0
+      }
+    }
+  }
+}

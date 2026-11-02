@@ -1,5 +1,20 @@
-
 services:
+  # PostgreSQL Database (Entities, Events, Relationships & Structured Context)
+  postgres:
+    image: postgres:16-alpine
+    container_name: recallens-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-recallens}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - recallens-network
+
   # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
@@ -8,22 +23,34 @@ services:
       - ./data/qdrant:/qdrant/storage
     restart: unless-stopped
     networks:
-      - qdrant-network
+      - recallens-network
 
   # Search Web UI (API + Web Interface)
   search-web:
     build:
       context: ./services
       dockerfile: Dockerfile
-    container_name: paperless-search-web
+    container_name: recallens-search-web
     command: python main.py
     ports:
       - "7702:8080"  # FastAPI + Web UI
+    volumes:
+      - ./dataset:/app/dataset:ro
     environment:
-      # Paperless Configuration
-      - PAPERLESS_URL=${PAPERLESS_URL}
-      - PAPERLESS_PUBLIC_URL=${PAPERLESS_PUBLIC_URL:-}
-      - PAPERLESS_API_KEY=${PAPERLESS_API_KEY}
+      # RecalLens / Document Store Configuration
+      - RECALLENS_URL=${RECALLENS_URL:-${PAPERLESS_URL:-http://localhost:8000}}
+      - RECALLENS_PUBLIC_URL=${RECALLENS_PUBLIC_URL:-${PAPERLESS_PUBLIC_URL:-}}
+      - RECALLENS_API_KEY=${RECALLENS_API_KEY:-${PAPERLESS_API_KEY:-}}
+      - PAPERLESS_URL=${RECALLENS_URL:-${PAPERLESS_URL:-http://localhost:8000}}
+      - PAPERLESS_PUBLIC_URL=${RECALLENS_PUBLIC_URL:-${PAPERLESS_PUBLIC_URL:-}}
+      - PAPERLESS_API_KEY=${RECALLENS_API_KEY:-${PAPERLESS_API_KEY:-}}
+
+      # PostgreSQL Configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-recallens}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
 
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
@@ -63,10 +90,11 @@ services:
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
+      - postgres
       - qdrant
     restart: unless-stopped
     networks:
-      - qdrant-network
+      - recallens-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -75,14 +103,24 @@ services:
     build:
       context: ./services
       dockerfile: Dockerfile
-    container_name: paperless-search-indexer
+    container_name: recallens-search-indexer
     command: python indexer_daemon.py
     volumes:
       - ./data/state:/app/data
+      - ./dataset:/app/dataset:ro
     environment:
-      # Paperless Configuration
-      - PAPERLESS_URL=${PAPERLESS_URL}
-      - PAPERLESS_API_KEY=${PAPERLESS_API_KEY}
+      # RecalLens / Document Store Configuration
+      - RECALLENS_URL=${RECALLENS_URL:-${PAPERLESS_URL:-http://localhost:8000}}
+      - RECALLENS_API_KEY=${RECALLENS_API_KEY:-${PAPERLESS_API_KEY:-}}
+      - PAPERLESS_URL=${RECALLENS_URL:-${PAPERLESS_URL:-http://localhost:8000}}
+      - PAPERLESS_API_KEY=${RECALLENS_API_KEY:-${PAPERLESS_API_KEY:-}}
+
+      # PostgreSQL Configuration
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-recallens}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
 
       # Qdrant Configuration
       - QDRANT_URL=http://qdrant:6333
@@ -111,13 +149,14 @@ services:
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
+      - postgres
       - qdrant
     restart: unless-stopped
     networks:
-      - qdrant-network
+      - recallens-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 networks:
-  qdrant-network:
+  recallens-network:
     driver: bridge

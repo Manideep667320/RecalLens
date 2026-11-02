@@ -1,5 +1,5 @@
 """
-Standalone indexer daemon for Paperless documents
+Standalone indexer daemon for RecalLens documents
 Runs independently from the web UI
 """
 
@@ -19,12 +19,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-PAPERLESS_URL = os.getenv('PAPERLESS_URL', 'http://paperless:8000')
-PAPERLESS_API_KEY = os.getenv('PAPERLESS_API_KEY')
+RECALLENS_URL = os.getenv('RECALLENS_URL', os.getenv('PAPERLESS_URL', 'http://paperless:8000'))
+PAPERLESS_URL = RECALLENS_URL
+RECALLENS_API_KEY = os.getenv('RECALLENS_API_KEY', os.getenv('PAPERLESS_API_KEY'))
+PAPERLESS_API_KEY = RECALLENS_API_KEY
 
 # Validate required configuration
-if not PAPERLESS_API_KEY:
-    logger.error("PAPERLESS_API_KEY environment variable is required")
+if not RECALLENS_API_KEY:
+    logger.error("RECALLENS_API_KEY (or PAPERLESS_API_KEY) environment variable is required")
     sys.exit(1)
 
 QDRANT_URL = os.getenv('QDRANT_URL', 'http://qdrant:6333')
@@ -65,8 +67,8 @@ def run_indexing_poll(indexer: DocumentIndexer):
 def main():
     """Main indexer daemon"""
     logger.info("=" * 60)
-    logger.info("Paperless Qdrant Indexer Daemon starting...")
-    logger.info(f"Paperless URL: {PAPERLESS_URL}")
+    logger.info("RecalLens Indexer Daemon starting...")
+    logger.info(f"RecalLens / Document Store URL: {RECALLENS_URL}")
     logger.info(f"Qdrant URL: {QDRANT_URL}")
     logger.info(f"Ollama URL: {OLLAMA_URL}")
     logger.info(f"Embedding model: {EMBEDDING_MODEL}")
@@ -81,6 +83,13 @@ def main():
     # Initialize indexer
     try:
         logger.info("Initializing indexer...")
+
+        # Initialize PostgreSQL storage
+        try:
+            from storage import init_db
+            init_db()
+        except Exception as e:
+            logger.warning(f"PostgreSQL initialization deferred: {e}")
 
         # Create provider
         from providers import create_provider

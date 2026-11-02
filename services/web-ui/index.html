@@ -3,161 +3,298 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paperless Search</title>
+    <title>RecalLens — Context-Driven Personal Document Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>📄 Paperless Search</h1>
-            <p class="subtitle">Google-like search for your documents</p>
-        </header>
+    <!-- Background ambient glow mesh -->
+    <div class="ambient-glow glow-top-left"></div>
+    <div class="ambient-glow glow-top-right"></div>
 
-        <div class="search-box">
-            <span class="search-icon">🔍</span>
-            <input
-                type="text"
-                id="searchInput"
-                placeholder="Search your documents..."
-                autofocus
-            />
-            <button class="search-button" id="searchButton">Search</button>
-        </div>
-
-        <div class="options-panel">
-            <div class="basic-options">
-                <div class="option">
-                    <input type="checkbox" id="queryExpansion" checked />
-                    <label for="queryExpansion">Query expansion</label>
+    <div class="app-shell">
+        <!-- Top Navigation -->
+        <header class="app-header">
+            <div class="header-inner">
+                <div class="brand">
+                    <div class="brand-icon-wrapper">
+                        <span class="brand-icon">🧠</span>
+                    </div>
+                    <div class="brand-text">
+                        <div class="brand-title">Recal<span class="brand-accent">Lens</span></div>
+                        <div class="brand-badge">Context-Driven Search</div>
+                    </div>
                 </div>
-                <div class="option">
-                    <input type="checkbox" id="reranking" checked />
-                    <label for="reranking">Reranking</label>
+
+                <div class="header-actions">
+                    <div class="status-pill" id="systemStatusPill">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Intelligence Engine Ready</span>
+                    </div>
+                    <a href="http://localhost:8000" id="recallensLink" target="_blank" class="nav-pill-btn">
+                        <span>📂 Open Vault</span>
+                        <span class="arrow-icon">↗</span>
+                    </a>
                 </div>
             </div>
+        </header>
 
-            <!-- Filter Controls -->
-            <div class="filter-controls">
-                <!-- Year Filter Row -->
-                <div class="filter-row" style="justify-content: space-between;">
-                    <div class="filter-item">
-                        <label for="yearFrom">Year:</label>
-                        <div style="display: flex; gap: 5px; align-items: center;">
-                            <select id="yearFrom" class="filter-select">
+        <!-- Main Workspace -->
+        <main class="main-content">
+            <!-- Hero Introduction -->
+            <section class="hero-section">
+                <div class="eyebrow-tag">
+                    <span class="sparkle">✨</span>
+                    <span>Event • Entity • Temporal Reasoning</span>
+                </div>
+                <h1 class="hero-title">
+                    Find any personal document <br>
+                    <span class="gradient-text">the way your brain remembers it.</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Search effortlessly by events, dates, merchants, and relationships — perfect for tuition receipts, leases, warranties, doctor bills, and daily records.
+                </p>
+            </section>
+
+            <!-- Omni Search Island (Double-Bezel Architecture) -->
+            <section class="search-island-wrapper">
+                <div class="search-island-outer">
+                    <div class="search-island-inner">
+                        <div class="search-input-group">
+                            <span class="search-prefix-icon">🔍</span>
+                            <input
+                                type="text"
+                                id="searchInput"
+                                placeholder="e.g. 'tuition receipt from last fall', 'laptop warranty from Best Buy', 'doctor bill in March'..."
+                                autocomplete="off"
+                                autofocus
+                            />
+                            <button id="clearSearchBtn" class="clear-input-btn" title="Clear search" style="display: none;">✕</button>
+                            <div class="shortcut-pill">
+                                <span>Press</span> <kbd>Enter ↵</kbd>
+                            </div>
+                        </div>
+                        <button class="primary-search-btn" id="searchButton">
+                            <span class="btn-text">Find Document</span>
+                            <span class="btn-icon">→</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Presets for Students & Everyday Life -->
+                <div class="preset-queries">
+                    <span class="preset-label">Quick Examples:</span>
+                    <button class="preset-chip" data-query="Tuition fee receipt for fall semester">
+                        <span class="preset-emoji">🎓</span> Tuition Receipt
+                    </button>
+                    <button class="preset-chip" data-query="Find the warranty for my laptop bought at Best Buy">
+                        <span class="preset-emoji">💻</span> Laptop Warranty
+                    </button>
+                    <button class="preset-chip" data-query="Apartment lease agreement signed with landlord">
+                        <span class="preset-emoji">🏠</span> Rental Lease
+                    </button>
+                    <button class="preset-chip" data-query="Doctor prescription and clinic payment in March">
+                        <span class="preset-emoji">🩺</span> Medical Bill
+                    </button>
+                    <button class="preset-chip" data-query="Flight booking and travel confirmation">
+                        <span class="preset-emoji">✈️</span> Travel Ticket
+                    </button>
+                    <button class="preset-chip" data-query="Electricity utility bill from last year">
+                        <span class="preset-emoji">⚡</span> Utility Bill
+                    </button>
+                </div>
+            </section>
+
+            <!-- Filter & Fine-Tuning Deck -->
+            <section class="controls-deck">
+                <div class="controls-bar">
+                    <div class="filter-pills-row">
+                        <!-- Mode Checkboxes -->
+                        <div class="toggle-switch-group">
+                            <label class="toggle-pill" for="queryExpansion">
+                                <input type="checkbox" id="queryExpansion" checked />
+                                <span class="toggle-indicator"></span>
+                                <span class="toggle-label">✨ Query Expansion</span>
+                            </label>
+                            <label class="toggle-pill" for="reranking">
+                                <input type="checkbox" id="reranking" checked />
+                                <span class="toggle-indicator"></span>
+                                <span class="toggle-label">🎯 Multi-Signal Reranking</span>
+                            </label>
+                        </div>
+
+                        <!-- Date Filters -->
+                        <div class="year-filter-island">
+                            <span class="filter-label-icon">📅</span>
+                            <span class="filter-label-text">Year:</span>
+                            <select id="yearFrom" class="select-chip">
                                 <option value="">From</option>
                             </select>
-                            <span>-</span>
-                            <select id="yearTo" class="filter-select">
+                            <span class="filter-dash">—</span>
+                            <select id="yearTo" class="select-chip">
                                 <option value="">To</option>
                             </select>
                         </div>
+
+                        <!-- Interactive Filter Drawers -->
+                        <div class="drawer-triggers">
+                            <button class="filter-drawer-btn" id="tagsToggle">
+                                <span>🏷️ Tags</span>
+                                <span class="toggle-arrow">▼</span>
+                            </button>
+                            <button class="filter-drawer-btn" id="correspondentsToggle">
+                                <span>👤 Correspondent</span>
+                                <span class="toggle-arrow">▼</span>
+                            </button>
+                            <button id="clearFilters" class="reset-filter-btn">✕ Reset Filters</button>
+                        </div>
                     </div>
 
-                    <!-- Collapsible Filters Buttons -->
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="filter-toggle-btn" id="tagsToggle">
-                            <span class="tag-icon">🏷️</span> Tags
-                            <span class="toggle-arrow">▼</span>
+                    <!-- Collapsible Tags Drawer -->
+                    <div class="drawer-panel collapsed" id="tagsPanel">
+                        <div class="drawer-header">
+                            <div class="drawer-title">Filter by Tags</div>
+                            <div class="filter-logic-toggle">
+                                <button class="logic-btn active" data-logic="any">Match Any</button>
+                                <button class="logic-btn" data-logic="all">Match All</button>
+                            </div>
+                        </div>
+                        <input type="text" id="tagSearch" class="drawer-search-input" placeholder="Search tags..." />
+                        <div class="tags-chip-cloud" id="tagsList">
+                            <div class="loading-state">Loading document tags...</div>
+                        </div>
+                    </div>
+
+                    <!-- Collapsible Correspondents Drawer -->
+                    <div class="drawer-panel collapsed" id="correspondentsPanel">
+                        <div class="drawer-header">
+                            <div class="drawer-title">Filter by Correspondent / Organization</div>
+                        </div>
+                        <input type="text" id="correspondentSearch" class="drawer-search-input" placeholder="Search correspondents (e.g. University, Apple, Amazon)..." />
+                        <div class="correspondent-chip-cloud" id="correspondentsList">
+                            <div class="loading-state">Loading correspondents...</div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Parameters Accordion -->
+                    <div class="advanced-accordion-wrapper">
+                        <button class="advanced-accordion-toggle" id="advancedToggle">
+                            <span id="toggleIcon" class="accordion-arrow">▶</span>
+                            <span>⚙️ Advanced Retrieval & Scoring Weights (Researcher Controls)</span>
                         </button>
-                        <button class="filter-toggle-btn" id="correspondentsToggle">
-                            <span class="tag-icon">👤</span> Correspondent
-                            <span class="toggle-arrow">▼</span>
-                        </button>
-                        <button id="clearFilters" class="clear-filters-btn">✕ Clear</button>
+
+                        <div class="advanced-options-grid" id="advancedOptions">
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Recency Boost</span>
+                                    <span class="param-badge" id="recencyWeightValue">0.0</span>
+                                </div>
+                                <input type="range" id="recencyWeight" min="0" max="1" step="0.05" value="0">
+                                <div class="param-desc">Prioritize recently created personal documents</div>
+                            </div>
+
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Recency Decay</span>
+                                    <span class="param-badge" id="recencyDecayValue">365d</span>
+                                </div>
+                                <input type="range" id="recencyDecay" min="30" max="1095" step="30" value="365">
+                                <div class="param-desc">Half-life duration in days for recency scoring</div>
+                            </div>
+
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Hybrid Alpha (Keyword vs Vector)</span>
+                                    <span class="param-badge" id="hybridAlphaValue">0.5</span>
+                                </div>
+                                <input type="range" id="hybridAlpha" min="0" max="1" step="0.1" value="0.5">
+                                <div class="param-desc">0 = Exact keyword only, 1 = Dense vector only, 0.5 = Balanced</div>
+                            </div>
+
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Rerank Influence</span>
+                                    <span class="param-badge" id="rerankInfluenceValue">0.2</span>
+                                </div>
+                                <input type="range" id="rerankInfluence" min="0" max="1" step="0.05" value="0.2">
+                                <div class="param-desc">Degree of cross-encoder & context adjustment applied</div>
+                            </div>
+
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Retrieval Candidates</span>
+                                    <span class="param-badge" id="retrievalTopKValue">50</span>
+                                </div>
+                                <input type="range" id="retrievalTopK" min="10" max="200" step="10" value="50">
+                                <div class="param-desc">Candidate pool size passed to context reranker</div>
+                            </div>
+
+                            <div class="parameter-card">
+                                <div class="param-header">
+                                    <span class="param-name">Final Display Limit</span>
+                                    <span class="param-badge" id="topKValue">10</span>
+                                </div>
+                                <input type="range" id="topK" min="5" max="50" step="5" value="10">
+                                <div class="param-desc">Number of top ranked results presented</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </section>
 
-                <!-- Tags Panel (collapsible) -->
-                <div class="filter-panel collapsed" id="tagsPanel">
-                    <div class="filter-logic-toggle">
-                        <button class="logic-btn active" data-logic="any">Any</button>
-                        <button class="logic-btn" data-logic="all">All</button>
+            <!-- Results & Live Context Canvas -->
+            <section class="results-canvas" id="content">
+                <!-- Empty state shown before first search -->
+                <div class="welcome-guide-card">
+                    <div class="guide-header">
+                        <div class="guide-icon">💡</div>
+                        <div class="guide-info">
+                            <h3>How RecalLens Searches Differently</h3>
+                            <p>Most search engines only match words. RecalLens understands the <strong>personal context</strong> behind your question.</p>
+                        </div>
                     </div>
-                    <input type="text" id="tagSearch" class="filter-search" placeholder="Filter tags" />
-                    <div class="filter-list" id="tagsList">
-                        <div class="loading">Loading tags...</div>
+                    <div class="guide-pillars">
+                        <div class="pillar-card">
+                            <div class="pillar-emoji">🏷️</div>
+                            <div class="pillar-title">Entities</div>
+                            <div class="pillar-text">Identifies people, specific gadgets, merchants, universities, and locations.</div>
+                        </div>
+                        <div class="pillar-card">
+                            <div class="pillar-emoji">🎯</div>
+                            <div class="pillar-title">Events</div>
+                            <div class="pillar-text">Distinguishes between purchases, repairs, warranty claims, leases, and doctor visits.</div>
+                        </div>
+                        <div class="pillar-card">
+                            <div class="pillar-emoji">📅</div>
+                            <div class="pillar-title">Temporal Logic</div>
+                            <div class="pillar-text">Translates expressions like <em>"last fall"</em>, <em>"between March and May"</em> into exact dates.</div>
+                        </div>
+                        <div class="pillar-card">
+                            <div class="pillar-emoji">🔗</div>
+                            <div class="pillar-title">Relationships</div>
+                            <div class="pillar-text">Connects linked items (e.g., <em>"warranty for the laptop I bought at Best Buy"</em>).</div>
+                        </div>
                     </div>
                 </div>
+            </section>
+        </main>
 
-                <!-- Correspondents Panel (collapsible) -->
-                <div class="filter-panel collapsed" id="correspondentsPanel">
-                    <input type="text" id="correspondentSearch" class="filter-search" placeholder="Filter correspondents" />
-                    <div class="filter-list" id="correspondentsList">
-                        <div class="loading">Loading correspondents...</div>
-                    </div>
+        <!-- Modern Footer -->
+        <footer class="app-footer">
+            <div class="footer-inner">
+                <div class="footer-brand">
+                    <span>RecalLens Research Project</span> • Context-Driven Personal Information Retrieval
+                </div>
+                <div class="footer-meta">
+                    Dual-Stream Qdrant & PostgreSQL Fusion • Cross-Encoder Reranking • RecalLens Core Engine
                 </div>
             </div>
-
-            <div style="margin-top: 15px;">
-                <button class="options-toggle" id="advancedToggle">
-                    <span id="toggleIcon">▶</span> Advanced Options
-                </button>
-            </div>
-
-            <div class="advanced-options" id="advancedOptions">
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Recency Weight</span>
-                        <span class="slider-value" id="recencyWeightValue">0.0</span>
-                    </div>
-                    <input type="range" id="recencyWeight" min="0" max="1" step="0.05" value="0">
-                    <div class="slider-description">Boost newer documents (0 = disabled, 1 = maximum boost)</div>
-                </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Recency Decay (days)</span>
-                        <span class="slider-value" id="recencyDecayValue">365</span>
-                    </div>
-                    <input type="range" id="recencyDecay" min="30" max="1095" step="30" value="365">
-                    <div class="slider-description">Half-life for recency boost (documents this old get 50% boost)</div>
-                </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Hybrid Alpha</span>
-                        <span class="slider-value" id="hybridAlphaValue">0.5</span>
-                    </div>
-                    <input type="range" id="hybridAlpha" min="0" max="1" step="0.1" value="0.5">
-                    <div class="slider-description">Search balance (0 = keyword only, 1 = semantic only, 0.5 = balanced)</div>
-                </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Rerank Influence</span>
-                        <span class="slider-value" id="rerankInfluenceValue">0.2</span>
-                    </div>
-                    <input type="range" id="rerankInfluence" min="0" max="1" step="0.05" value="0.2">
-                    <div class="slider-description">How much reranking adjusts scores (0 = no effect, 0.2 = ±0.2 max, 1.0 = full replacement)</div>
-                </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Results to Retrieve</span>
-                        <span class="slider-value" id="retrievalTopKValue">50</span>
-                    </div>
-                    <input type="range" id="retrievalTopK" min="10" max="200" step="10" value="50">
-                    <div class="slider-description">Number of results before reranking (higher = slower but more thorough)</div>
-                </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Final Results</span>
-                        <span class="slider-value" id="topKValue">10</span>
-                    </div>
-                    <input type="range" id="topK" min="5" max="50" step="5" value="10">
-                    <div class="slider-description">Number of final results to display</div>
-                </div>
-            </div>
-        </div>
-
-        <div id="content"></div>
-
-        <footer>
-            Powered by Qdrant, Ollama & FastAPI
         </footer>
     </div>
 
+    <!-- Application Script -->
     <script src="static/app.js"></script>
 </body>
 </html>
