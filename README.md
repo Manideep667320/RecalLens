@@ -240,7 +240,13 @@ To run the FastAPI search application directly on your host machine:
    export PROVIDER=ollama
    ```
 
-5. **Launch the RecalLens Web Server:**
+5. **Index the Sample Documents (into Qdrant & PostgreSQL):**
+   ```bash
+   python services/index_dataset.py --limit 100
+   ```
+   *(Indexes 100 benchmark personal documents into vector storage and relational context. Use `--limit 0` to index all 1,500 documents).*
+
+6. **Launch the RecalLens Web Server:**
    ```bash
    python services/main.py
    ```

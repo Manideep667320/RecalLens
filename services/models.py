@@ -151,11 +151,23 @@ class ExplainResponse(BaseModel):
 
 class ExpandedQuery(BaseModel):
     """Query after LLM expansion and contextual parsing"""
-    original_query: str
-    expanded_query: str
+    original_query: str = ""
+    expanded_query: str = ""
+    query: Optional[str] = None
     extracted_filters: Dict[str, Any] = Field(default_factory=dict)
     keywords: List[str] = Field(default_factory=list)
     context: Optional[QueryContext] = None
+
+    def __init__(self, **data):
+        if "query" not in data and "original_query" in data:
+            data["query"] = data["original_query"]
+        elif "original_query" not in data and "query" in data:
+            data["original_query"] = data["query"]
+        super().__init__(**data)
+        if not self.query and self.original_query:
+            self.query = self.original_query
+        elif not self.original_query and self.query:
+            self.original_query = self.query
 
 
 class SearchResult(BaseModel):

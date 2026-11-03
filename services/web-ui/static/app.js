@@ -66,8 +66,26 @@ async function loadConfig() {
             const config = await response.json();
             recallensBaseUrl = config.recallens_url || config.paperless_url || recallensBaseUrl;
             paperlessBaseUrl = recallensBaseUrl;
-            if (recallensLink) {
-                recallensLink.href = recallensBaseUrl;
+
+            // Show "Open Vault" link only when a real Paperless/RecalLens URL is configured
+            // (i.e., not the default localhost:8000 that nobody has running)
+            const vaultLink = document.getElementById('vaultLink');
+            const isStandaloneMode = !recallensBaseUrl ||
+                recallensBaseUrl === 'http://localhost:8000' ||
+                config.api_key === 'local-dev-key' ||
+                config.standalone_mode === true;
+
+            if (vaultLink) {
+                if (!isStandaloneMode) {
+                    vaultLink.href = recallensBaseUrl;
+                    vaultLink.innerHTML = '<span>📂 Open Vault</span><span class="arrow-icon">↗</span>';
+                    vaultLink.title = 'Open RecalLens Vault';
+                } else {
+                    vaultLink.href = '/api/dataset/browse';
+                    vaultLink.innerHTML = '<span>📂 Browse Dataset</span><span class="arrow-icon">↗</span>';
+                    vaultLink.title = 'Browse benchmark dataset records';
+                }
+                vaultLink.style.display = 'inline-flex';
             }
         }
     } catch (error) {
@@ -173,9 +191,11 @@ async function loadTags() {
             const data = await response.json();
             allTags = data.tags || [];
             renderTags(allTags);
+        } else {
+            renderTags([]);
         }
     } catch (error) {
-        tagsList.innerHTML = '<div class="loading-state">Could not load tags</div>';
+        renderTags([]);
     }
 }
 
@@ -221,9 +241,11 @@ async function loadCorrespondents() {
             const data = await response.json();
             allCorrespondents = data.correspondents || [];
             renderCorrespondents(allCorrespondents);
+        } else {
+            renderCorrespondents([]);
         }
     } catch (error) {
-        correspondentsList.innerHTML = '<div class="loading-state">Could not load correspondents</div>';
+        renderCorrespondents([]);
     }
 }
 
@@ -560,8 +582,10 @@ function renderResults(query, expandedQuery, retrievalTimeMs) {
 
     displayResults.forEach((result, index) => {
         const activeDocId = result.recallens_id || result.paperless_id;
-        const documentUrl = `${recallensBaseUrl}/documents/${activeDocId}`;
-        const downloadUrl = `${recallensBaseUrl}/api/documents/${activeDocId}/download/`;
+        // In standalone mode (no real Paperless backend), link to API docs for this doc
+        const isStandalone = !recallensBaseUrl || recallensBaseUrl === 'http://localhost:8000';
+        const documentUrl = isStandalone ? `/api/dataset/browse` : `${recallensBaseUrl}/documents/${activeDocId}`;
+        const downloadUrl = isStandalone ? `#` : `${recallensBaseUrl}/api/documents/${activeDocId}/download/`;
         const finalScore = result.final_score !== undefined && result.final_score !== null ? result.final_score : result.score;
         const matchPercent = Math.min(100, Math.max(10, Math.round(finalScore * 100)));
 
@@ -600,7 +624,7 @@ function renderResults(query, expandedQuery, retrievalTimeMs) {
                     </div>
 
                     <!-- Document Title -->
-                    <a href="${paperlessUrl}" target="_blank" class="card-doc-title">
+                    <a href="${documentUrl}" target="_blank" class="card-doc-title">
                         <span class="title-rank-num">#${index + 1}</span>
                         <span>${escapeHtml(result.title)}</span>
                         <span class="title-external-icon">↗</span>
@@ -660,13 +684,19 @@ function renderResults(query, expandedQuery, retrievalTimeMs) {
 
                     <!-- Actions Bar -->
                     <div class="card-actions-bar">
-                        <a href="${documentUrl}" target="_blank" class="btn-action-primary">
-                            <span>📄 View in RecalLens</span>
-                            <span>↗</span>
-                        </a>
-                        <a href="${downloadUrl}" target="_blank" class="btn-action-secondary">
-                            <span>⬇️ Download PDF</span>
-                        </a>
+                        ${isStandalone ? `
+                            <button class="btn-action-primary" onclick="copySnippet(${activeDocId}, this)" title="Copy document details to clipboard">
+                                <span>📋 Copy Details</span>
+                            </button>
+                        ` : `
+                            <a href="${documentUrl}" target="_blank" class="btn-action-primary">
+                                <span>📄 View in RecalLens</span>
+                                <span>↗</span>
+                            </a>
+                            <a href="${downloadUrl}" target="_blank" class="btn-action-secondary">
+                                <span>⬇️ Download PDF</span>
+                            </a>
+                        `}
                         <button class="btn-action-secondary" onclick="toggleExplanation(${activeDocId}, event)">
                             <span>💡 Explain Match</span>
                         </button>

@@ -21,6 +21,8 @@ services:
     container_name: qdrant
     volumes:
       - ./data/qdrant:/qdrant/storage
+    ports:
+      - "6333:6333"
     restart: unless-stopped
     networks:
       - recallens-network
@@ -35,6 +37,7 @@ services:
     ports:
       - "7702:8080"  # FastAPI + Web UI
     volumes:
+      - ./services:/app
       - ./dataset:/app/dataset:ro
     environment:
       # RecalLens / Document Store Configuration
@@ -61,9 +64,9 @@ services:
 
       # Ollama Configuration (for PROVIDER=ollama)
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
-      - RERANK_MODEL=${RERANK_MODEL:-bge-reranker-v2-m3}
-      - LLM_MODEL=${LLM_MODEL:-llama3.2:latest}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text:latest}
+      - RERANK_MODEL=${RERANK_MODEL:-phi:latest}
+      - LLM_MODEL=${LLM_MODEL:-phi:latest}
 
       # Google AI Configuration (for PROVIDER=google)
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
@@ -106,6 +109,7 @@ services:
     container_name: recallens-search-indexer
     command: python indexer_daemon.py
     volumes:
+      - ./services:/app
       - ./data/state:/app/data
       - ./dataset:/app/dataset:ro
     environment:
@@ -131,7 +135,7 @@ services:
 
       # Ollama Configuration (for PROVIDER=ollama)
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text:latest}
 
       # Google AI Configuration (for PROVIDER=google)
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}

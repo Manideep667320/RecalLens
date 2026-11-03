@@ -158,7 +158,7 @@ class OllamaProvider(BaseProvider):
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
                 json=api_request,
-                timeout=120
+                timeout=30  # 30s max — keeps SSE stream responsive
             )
             response.raise_for_status()
             return response.json()

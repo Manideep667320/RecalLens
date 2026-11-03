@@ -10,6 +10,45 @@ import sys
 services_dir = os.path.dirname(os.path.abspath(__file__))
 if services_dir not in sys.path:
     sys.path.insert(0, services_dir)
+
+# Helper to automatically load .env and adapt hostnames when running locally
+def _init_environment():
+    env_paths = [
+        os.path.join(os.path.dirname(services_dir), '.env'),
+        os.path.join(services_dir, '.env'),
+        '.env'
+    ]
+    for p in env_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            k, v = line.split('=', 1)
+                            k = k.strip()
+                            v = v.strip().strip('"').strip("'")
+                            if k not in os.environ and v:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+    # When running directly on host OS (outside Docker container)
+    is_docker = os.path.exists('/.dockerenv') or os.getenv('RUNNING_IN_DOCKER', '').lower() == 'true'
+    if not is_docker:
+        if os.getenv('POSTGRES_HOST') == 'postgres':
+            os.environ['POSTGRES_HOST'] = 'localhost'
+        q_url = os.getenv('QDRANT_URL', '')
+        if 'qdrant:6333' in q_url:
+            os.environ['QDRANT_URL'] = q_url.replace('qdrant:6333', 'localhost:6333')
+        if not os.getenv('QDRANT_URL'):
+            os.environ['QDRANT_URL'] = 'http://localhost:6333'
+        ol_url = os.getenv('OLLAMA_URL', '')
+        if 'host.docker.internal:11434' in ol_url:
+            os.environ['OLLAMA_URL'] = ol_url.replace('host.docker.internal:11434', 'localhost:11434')
+
+_init_environment()
 import logging
 import time
 import json
@@ -19,7 +58,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -40,21 +79,30 @@ RECALLENS_URL = os.getenv('RECALLENS_URL', os.getenv('PAPERLESS_URL', 'http://lo
 PAPERLESS_URL = RECALLENS_URL
 RECALLENS_PUBLIC_URL = os.getenv('RECALLENS_PUBLIC_URL', os.getenv('PAPERLESS_PUBLIC_URL', '')).strip() or RECALLENS_URL
 PAPERLESS_PUBLIC_URL = RECALLENS_PUBLIC_URL
-RECALLENS_API_KEY = os.getenv('RECALLENS_API_KEY', os.getenv('PAPERLESS_API_KEY'))
+RECALLENS_API_KEY = (os.getenv('RECALLENS_API_KEY') or os.getenv('PAPERLESS_API_KEY') or '').strip()
 PAPERLESS_API_KEY = RECALLENS_API_KEY
 
 # Validate required configuration
-if not RECALLENS_API_KEY:
-    logger.error("RECALLENS_API_KEY (or PAPERLESS_API_KEY) environment variable is required")
-    import sys
-    sys.exit(1)
+if not RECALLENS_API_KEY or RECALLENS_API_KEY.startswith('your_'):
+    logger.info("RECALLENS_API_KEY not configured. Using 'local-dev-key' for standalone mode.")
+    RECALLENS_API_KEY = 'local-dev-key'
+    PAPERLESS_API_KEY = RECALLENS_API_KEY
 
-QDRANT_URL = os.getenv('QDRANT_URL', 'http://qdrant:6333')
+
+
+
+
+is_docker_env = os.path.exists('/.dockerenv') or os.getenv('RUNNING_IN_DOCKER', '').lower() == 'true'
+QDRANT_URL = os.getenv('QDRANT_URL', 'http://qdrant:6333' if is_docker_env else 'http://localhost:6333')
+if not is_docker_env and 'qdrant:6333' in QDRANT_URL:
+    QDRANT_URL = QDRANT_URL.replace('qdrant:6333', 'localhost:6333')
 QDRANT_COLLECTION = os.getenv('QDRANT_COLLECTION', 'documents')
-OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://host.docker.internal:11434')
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'nomic-embed-text')
-RERANK_MODEL = os.getenv('RERANK_MODEL', 'bge-reranker-v2-m3')
-LLM_MODEL = os.getenv('LLM_MODEL', 'llama3.2:latest')
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://host.docker.internal:11434' if is_docker_env else 'http://localhost:11434')
+if not is_docker_env and 'host.docker.internal' in OLLAMA_URL:
+    OLLAMA_URL = OLLAMA_URL.replace('host.docker.internal', 'localhost')
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'nomic-embed-text:latest')
+RERANK_MODEL = os.getenv('RERANK_MODEL', 'phi:latest')
+LLM_MODEL = os.getenv('LLM_MODEL', 'phi:latest')
 DEFAULT_QUERY_LANGUAGE = os.getenv('DEFAULT_QUERY_LANGUAGE', 'English')
 ENABLE_QUERY_EXPANSION = os.getenv('ENABLE_QUERY_EXPANSION', 'true').lower() == 'true'
 ENABLE_RERANKING = os.getenv('ENABLE_RERANKING', 'true').lower() == 'true'
@@ -121,7 +169,7 @@ async def lifespan(app: FastAPI):
 
     initialize_components()
 
-    logger.info("Web UI ready on http://0.0.0.0:8080")
+    logger.info("Web UI ready at http://localhost:8080 (or http://localhost:7702 in Docker)")
 
     yield
 
@@ -150,7 +198,13 @@ templates = Jinja2Templates(directory=WEB_UI_DIR)
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Serve the search UI"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    index_file = os.path.join(WEB_UI_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    try:
+        return templates.TemplateResponse(request=request, name="index.html")
+    except Exception:
+        return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/api/search", response_model=SearchResponse)
@@ -292,7 +346,12 @@ async def search_stream(query: SearchQuery, request: Request):
             await asyncio.sleep(0)  # Force flush the stream
 
             expansion_enabled = query.enable_query_expansion if query.enable_query_expansion is not None else ENABLE_QUERY_EXPANSION
-            expanded_query = query_processor.expand_query(query.query, expansion_enabled)
+            try:
+                expanded_query = query_processor.expand_query(query.query, expansion_enabled)
+            except Exception as qe:
+                logger.warning(f"Query expansion failed (using raw query): {qe}")
+                from models import ExpandedQuery
+                expanded_query = ExpandedQuery(original_query=query.query, expanded_query=query.query)
 
             # Merge UI filters with LLM-extracted filters (UI filters take precedence)
             if query.filters:
@@ -320,14 +379,18 @@ async def search_stream(query: SearchQuery, request: Request):
 
             hybrid_alpha = query.hybrid_alpha if query.hybrid_alpha is not None else HYBRID_ALPHA
 
-            results = retriever.retrieve(
-                expanded_query=expanded_query,
-                top_k=retrieval_limit,
-                hybrid_alpha=hybrid_alpha,
-                user_id=query.user_id
-            )
+            try:
+                results = retriever.retrieve(
+                    expanded_query=expanded_query,
+                    top_k=retrieval_limit,
+                    hybrid_alpha=hybrid_alpha,
+                    user_id=query.user_id
+                )
+            except Exception as re_err:
+                logger.error(f"Retrieval error: {re_err}")
+                results = []
             retrieval_time = (time.time() - retrieval_start) * 1000
-            logger.info(f"Retrieval completed in {retrieval_time:.0f}ms")
+            logger.info(f"Retrieval completed in {retrieval_time:.0f}ms, got {len(results)} results")
 
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'retrieval', 'message': f'Retrieved {len(results)} documents', 'done': True, 'count': len(results)})}\n\n"
 
@@ -422,7 +485,7 @@ async def search_stream(query: SearchQuery, request: Request):
             await asyncio.sleep(0)  # Force flush the stream
 
             # Sort by final score and get top_k
-            results.sort(key=lambda x: x.final_score, reverse=True)
+            results.sort(key=lambda x: (x.final_score if x.final_score is not None else x.score), reverse=True)
             top_results = results[:top_k]
 
             # Generate highlights for top_k only
@@ -468,6 +531,164 @@ async def health():
     }
 
 
+@app.get("/api/dataset/browse")
+async def browse_dataset(request: Request, page: int = 1, page_size: int = 20, doc_type: str = "", format: str = ""):
+    """Browse the local benchmark dataset (standalone mode only)"""
+    try:
+        import csv
+        import html
+        dataset_paths = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset", "documents.csv"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dataset", "documents.csv"),
+            os.path.abspath("dataset/documents.csv"),
+            "/app/dataset/documents.csv"
+        ]
+        csv_path = next((p for p in dataset_paths if os.path.exists(p)), None)
+        if not csv_path:
+            return JSONResponse({"documents": [], "total": 0, "page": page, "page_size": page_size})
+
+        rows = []
+        with open(csv_path, mode="r", encoding="utf-8", errors="replace") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        all_types = sorted(list({r.get('document_type', '') for r in rows if r.get('document_type')}))
+        if doc_type:
+            rows = [r for r in rows if (r.get('document_type') or '').lower() == doc_type.lower()]
+
+        total = len(rows)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        page = max(1, min(page, total_pages))
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_rows = rows[start:end]
+
+        documents = []
+        for row in page_rows:
+            documents.append({
+                "id": str(row.get("document_id", "")),
+                "title": str(row.get("title", "")),
+                "document_type": str(row.get("document_type", "")),
+                "date": str(row.get("date", "")),
+                "event": str(row.get("event", "")),
+                "text_preview": str(row.get("text", ""))[:240],
+            })
+
+        # Return HTML for browser requests unless format=json requested
+        wants_html = "text/html" in request.headers.get("accept", "") and format != "json"
+        if wants_html:
+            rows_html = "".join([f"""
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <td style="padding: 12px 16px; font-family: monospace; color: #94a3b8;">{html.escape(d['id'])}</td>
+                    <td style="padding: 12px 16px; font-weight: 600; color: #f8fafc;">{html.escape(d['title'])}</td>
+                    <td style="padding: 12px 16px;"><span style="background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); padding: 2px 8px; border-radius: 9999px; font-size: 12px;">{html.escape(d['document_type'])}</span></td>
+                    <td style="padding: 12px 16px; color: #cbd5e1; font-size: 13px;">{html.escape(d['date'])}</td>
+                    <td style="padding: 12px 16px; color: #e2e8f0; font-size: 13px; line-height: 1.4;">{html.escape(d['text_preview'])}...</td>
+                </tr>
+            """ for d in documents])
+
+            type_options = "".join([f'<option value="{t}" {"selected" if t.lower() == doc_type.lower() else ""}>{t}</option>' for t in all_types])
+            prev_link = f"/api/dataset/browse?page={page-1}&page_size={page_size}&doc_type={doc_type}" if page > 1 else "#"
+            next_link = f"/api/dataset/browse?page={page+1}&page_size={page_size}&doc_type={doc_type}" if page < total_pages else "#"
+
+            html_page = f"""<!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <title>RecalLens — Document Vault (Dataset Browser)</title>
+                <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧠</text></svg>">
+                <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    body {{ margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: #0b0f19; color: #f1f5f9; padding: 24px; }}
+                    .container {{ max-width: 1200px; margin: 0 auto; }}
+                    .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+                    .btn {{ background: #4f46e5; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; border: none; cursor: pointer; }}
+                    .btn:hover {{ background: #4338ca; }}
+                    .btn-secondary {{ background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); }}
+                    .btn-secondary:hover {{ background: rgba(255,255,255,0.15); }}
+                    .card {{ background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; backdrop-filter: blur(12px); }}
+                    table {{ width: 100%; border-collapse: collapse; text-align: left; }}
+                    th {{ padding: 12px 16px; background: rgba(30, 41, 59, 0.6); color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }}
+                    .pagination {{ display: flex; justify-content: space-between; align-items: center; padding: 16px; border-top: 1px solid rgba(255,255,255,0.06); }}
+                    select {{ background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-family: inherit; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <div>
+                            <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                                <span>🧠</span> RecalLens Personal Document Vault
+                            </h2>
+                            <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 14px;">
+                                Standalone Mode: Exploring {total:,} grounded records in <code>dataset/documents.csv</code>
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <a href="/" class="btn btn-secondary">← Back to Search</a>
+                            <a href="/docs" class="btn btn-secondary">API Docs ↗</a>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                        <form method="get" action="/api/dataset/browse" style="display: flex; gap: 10px; align-items: center;">
+                            <label style="font-size: 14px; color: #94a3b8;">Filter by Type:</label>
+                            <select name="doc_type" onchange="this.form.submit()">
+                                <option value="">All Types ({total})</option>
+                                {type_options}
+                            </select>
+                            <input type="hidden" name="page" value="1">
+                        </form>
+                        <span style="font-size: 13px; color: #64748b;">Showing page {page} of {total_pages} ({total:,} total)</span>
+                    </div>
+
+                    <div class="card">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 110px;">ID</th>
+                                    <th style="width: 220px;">Title</th>
+                                    <th style="width: 140px;">Type</th>
+                                    <th style="width: 110px;">Date</th>
+                                    <th>Content Preview</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows_html}
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <div>
+                                <a href="{prev_link}" class="btn btn-secondary" style="{'pointer-events: none; opacity: 0.4;' if page <= 1 else ''}">← Previous</a>
+                                <a href="{next_link}" class="btn btn-secondary" style="{'pointer-events: none; opacity: 0.4;' if page >= total_pages else ''}">Next →</a>
+                            </div>
+                            <span style="color: #94a3b8; font-size: 13px;">RecalLens Context-Driven Personal Intelligence</span>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>"""
+            return HTMLResponse(content=html_page)
+
+        return JSONResponse({
+            "documents": documents,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "doc_types": all_types
+        })
+    except Exception as e:
+        logger.error(f"Dataset browse failed: {e}")
+        return JSONResponse({"documents": [], "total": 0, "page": page, "page_size": page_size, "error": str(e)})
+
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Favicon endpoint to prevent 404 noise"""
+    return Response(status_code=204)
+
 @app.get("/api/recallens/tags")
 @app.get("/api/paperless/tags")
 async def get_paperless_tags():
@@ -481,7 +702,7 @@ async def get_paperless_tags():
             response = requests.get(
                 f"{PAPERLESS_URL}/api/tags/?page={page}&page_size=100",
                 headers={"Authorization": f"Token {PAPERLESS_API_KEY}"},
-                timeout=10
+                timeout=3
             )
             response.raise_for_status()
             data = response.json()
@@ -505,7 +726,7 @@ async def get_paperless_tags():
         return {"tags": all_tags}
     except Exception as e:
         logger.error(f"Failed to fetch tags from Paperless: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}")
+        return {"tags": []}
 
 
 @app.get("/api/recallens/correspondents")
@@ -521,7 +742,7 @@ async def get_paperless_correspondents():
             response = requests.get(
                 f"{PAPERLESS_URL}/api/correspondents/?page={page}&page_size=100",
                 headers={"Authorization": f"Token {PAPERLESS_API_KEY}"},
-                timeout=10
+                timeout=3
             )
             response.raise_for_status()
             data = response.json()
@@ -544,7 +765,7 @@ async def get_paperless_correspondents():
         return {"correspondents": all_correspondents}
     except Exception as e:
         logger.error(f"Failed to fetch correspondents from Paperless: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch correspondents: {str(e)}")
+        return {"correspondents": []}
 
 
 @app.get("/api/config")
@@ -553,6 +774,8 @@ async def get_config():
     emb_model = getattr(retriever.provider, 'embedding_model', EMBEDDING_MODEL) if retriever and hasattr(retriever, 'provider') else EMBEDDING_MODEL
     llm_m = getattr(reranker.provider, 'llm_model', LLM_MODEL) if reranker and hasattr(reranker, 'provider') else LLM_MODEL
     rerank_m = getattr(reranker.provider, 'rerank_model', llm_m) if reranker and hasattr(reranker, 'provider') else RERANK_MODEL
+    # Standalone mode: no real Paperless/RecalLens backend connected
+    standalone = RECALLENS_API_KEY == 'local-dev-key'
     return {
         "recallens_url": RECALLENS_PUBLIC_URL,
         "paperless_url": RECALLENS_PUBLIC_URL,  # Backward compatibility alias
@@ -564,7 +787,8 @@ async def get_config():
         "retrieval_top_k": RETRIEVAL_TOP_K,
         "rerank_top_k": RERANK_TOP_K,
         "hybrid_alpha": HYBRID_ALPHA,
-        "rerank_influence": RERANK_INFLUENCE
+        "rerank_influence": RERANK_INFLUENCE,
+        "standalone_mode": standalone
     }
 
 

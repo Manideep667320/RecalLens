@@ -86,4 +86,5 @@ def create_provider(
 
 
 # Export public API
-__all__ = ['create_provider', 'BaseProvider', 'EmbeddingTaskType', 'OllamaProvider', 'GoogleProvider']
+get_provider = create_provider
+__all__ = ['create_provider', 'get_provider', 'BaseProvider', 'EmbeddingTaskType', 'OllamaProvider', 'GoogleProvider']

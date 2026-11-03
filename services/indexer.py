@@ -74,7 +74,7 @@ class DocumentIndexer:
             'Content-Type': 'application/json'
         }
 
-        self.qdrant_client = QdrantClient(url=qdrant_url)
+        self.qdrant_client = QdrantClient(url=qdrant_url, check_compatibility=False)
 
         # State file
         self.state_file = Path('/app/data/last_poll.json')
